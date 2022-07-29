@@ -1,0 +1,8 @@
+/.obj/
+/extern.cmake
+/extern/
+/libmappingextensions.so
+/makefile.user
+/MappingExtensions.qmod
+/qpm.shared.json
+/qpm_defines.cmake
