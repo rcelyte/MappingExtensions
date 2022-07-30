@@ -71,7 +71,7 @@
 #include <sombrero/shared/FastVector3.hpp>
 #include <sombrero/shared/FastQuaternion.hpp>
 #include <pinkcore/shared/RequirementAPI.hpp>
-
+#define DL_EXPORT __attribute__((visibility("default")))
 
 using namespace GlobalNamespace;
 using namespace System::Collections;
@@ -557,14 +557,14 @@ MAKE_HOOK_MATCH(StaticBeatmapObjectSpawnMovementData_LineYPosForLineLayer, &Stat
 	return beatmapData;
 }*/
 
-extern "C" void setup(ModInfo& info) {
+extern "C" DL_EXPORT void setup(ModInfo& info) {
 	info.id = "MappingExtensions";
 	info.version = "0.21.0";
 	modInfo = info;
 	logger().info("Leaving setup!");
 }
 
-extern "C" void load() {
+extern "C" DL_EXPORT void load() {
 	logger().info("Installing ME Hooks, please wait");
 	il2cpp_functions::Init();
 
