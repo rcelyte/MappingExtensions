@@ -1,17 +1,17 @@
 {
-	"sharedDir": ".obj",
+	"sharedDir": "",
 	"dependenciesDir": "extern",
 	"info": {
 		"name": "MappingExtensions",
 		"id": "MappingExtensions",
-		"version": "1.0.0",
+		"version": "0.21.0",
 		"url": null,
 		"additionalData": {}
 	},
 	"dependencies": [
 		{
 			"id": "beatsaber-hook",
-			"versionRange": "3.10.0",
+			"versionRange": "^3.10.0",
 			"additionalData": {
 				"extraFiles": [
 					"src/inline-hook"
@@ -20,22 +20,22 @@
 		},
 		{
 			"id": "codegen",
-			"versionRange": "0.25.0",
+			"versionRange": "^0.25.0",
 			"additionalData": {}
 		},
 		{
 			"id": "pinkcore",
-			"versionRange": "1.6.8",
+			"versionRange": "^1.6.8",
 			"additionalData": {}
 		},
 		{
 			"id": "qosmetics-api",
-			"versionRange": "0.1.4",
+			"versionRange": "^0.1.4",
 			"additionalData": {}
 		},
 		{
 			"id": "config-utils",
-			"versionRange": "0.8.0",
+			"versionRange": "^0.8.0",
 			"additionalData": {}
 		},
 		{

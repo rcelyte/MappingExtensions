@@ -86,7 +86,7 @@ Logger& logger() {
 
 extern "C" void setup(ModInfo& info) {
 	info.id = "MappingExtensions";
-	info.version = "0.20.4";
+	info.version = "0.21.0";
 	modInfo = info;
 	logger().info("Leaving setup!");
 }
