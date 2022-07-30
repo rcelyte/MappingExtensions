@@ -62,15 +62,15 @@
 #include <UnityEngine/Camera.hpp>
 #include <UnityEngine/Color.hpp>
 #include <UnityEngine/Graphics.hpp>
-#include <UnityEngine/Quaternion.hpp>
 #include <UnityEngine/Resources.hpp>
-#include <UnityEngine/Vector2.hpp>
-#include <UnityEngine/Vector3.hpp>
 // #include <BeatmapSaveDataVersion2_6_0AndEarlier/BeatmapObjectType.hpp>
 // #include <BeatmapSaveDataVersion2_6_0AndEarlier/BeatmapSaveData_EventData.hpp>
 // #include <BeatmapSaveDataVersion2_6_0AndEarlier/BeatmapSaveData_NoteData.hpp>
 // #include <GlobalNamespace/SpawnRotationProcessor.hpp>
-#include "pinkcore/shared/RequirementAPI.hpp"
+#include <sombrero/shared/FastVector2.hpp>
+#include <sombrero/shared/FastVector3.hpp>
+#include <sombrero/shared/FastQuaternion.hpp>
+#include <pinkcore/shared/RequirementAPI.hpp>
 
 
 using namespace GlobalNamespace;
@@ -82,13 +82,6 @@ static ModInfo modInfo;
 Logger& logger() {
 	static Logger *logger = new Logger(modInfo, LoggerOptions(false, true));
 	return *logger;
-}
-
-extern "C" void setup(ModInfo& info) {
-	info.id = "MappingExtensions";
-	info.version = "0.21.0";
-	modInfo = info;
-	logger().info("Leaving setup!");
 }
 
 [[maybe_unused]] static void dump_real(int before, int after, void* ptr) {
@@ -184,10 +177,10 @@ MAKE_HOOK_MATCH(BeatmapObjectsInTimeRowProcessor_SliderHeadPositionOverlapsWithN
 }
 
 static bool SliderHeadPositionOverlapsWithNote(SliderData *slider, NoteData *note) {
-	return slider->get_headLineIndex() == note->get_lineIndex() && slider->get_headLineLayer() == note->get_noteLineLayer();
+	return slider->headLineIndex == note->lineIndex && slider->headLineLayer == note->noteLineLayer;
 }
 static bool SliderTailPositionOverlapsWithNote(SliderData *slider, NoteData *note) {
-	return slider->get_tailLineIndex() == note->get_lineIndex() && slider->get_tailLineLayer() == note->get_noteLineLayer();
+	return slider->tailLineIndex == note->lineIndex && slider->tailLineLayer == note->noteLineLayer;
 }
 MAKE_HOOK_MATCH(BeatmapObjectsInTimeRowProcessor_HandleCurrentTimeSliceAllNotesAndSlidersDidFinishTimeSlice, &BeatmapObjectsInTimeRowProcessor::HandleCurrentTimeSliceAllNotesAndSlidersDidFinishTimeSlice, void, BeatmapObjectsInTimeRowProcessor *self, ::GlobalNamespace::BeatmapObjectsInTimeRowProcessor::TimeSliceContainer_1<::GlobalNamespace::BeatmapDataItem*>* allObjectsTimeSlice, float nextTimeSliceTime) {
 	lineIndexes.clear();
@@ -198,9 +191,8 @@ MAKE_HOOK_MATCH(BeatmapObjectsInTimeRowProcessor_HandleCurrentTimeSliceAllNotesA
 		NoteData *note = il2cpp_utils::try_cast<NoteData>(items->get_Item(i)).value_or(nullptr);
 		if(!note)
 			continue;
-		int32_t lineIndex = note->get_lineIndex();
-		lineIndexes.push_back(lineIndex);
-		note->set_lineIndex(std::clamp(lineIndex, 0, 3));
+		lineIndexes.push_back(note->lineIndex);
+		note->lineIndex = std::clamp(note->lineIndex, 0, 3);
 	}
 	BeatmapObjectsInTimeRowProcessor_HandleCurrentTimeSliceAllNotesAndSlidersDidFinishTimeSlice(self, allObjectsTimeSlice, nextTimeSliceTime);
 	/*IEnumerable<NoteData> enumerable = allObjectsTimeSlice.OfType<NoteData>();
@@ -213,8 +205,8 @@ MAKE_HOOK_MATCH(BeatmapObjectsInTimeRowProcessor_HandleCurrentTimeSliceAllNotesA
 		NoteData *note = il2cpp_utils::try_cast<NoteData>(items->get_Item(i)).value_or(nullptr);
 		if(!note)
 			continue;
-		std::vector<NoteData*> *list = &notesInColumnsReusableProcessingDictionaryOfLists.try_emplace(note->get_lineIndex()).first->second;
-		NoteLineLayer lineLayer = note->get_noteLineLayer();
+		std::vector<NoteData*> *list = &notesInColumnsReusableProcessingDictionaryOfLists.try_emplace(note->lineIndex).first->second;
+		NoteLineLayer lineLayer = note->noteLineLayer;
 		std::vector<NoteData*>::const_iterator pos = std::find_if(list->begin(), list->end(), [lineLayer](NoteData *e) {
 			return e->noteLineLayer > lineLayer;
 		});
@@ -234,16 +226,16 @@ MAKE_HOOK_MATCH(BeatmapObjectsInTimeRowProcessor_HandleCurrentTimeSliceAllNotesA
 			if(!SliderHeadPositionOverlapsWithNote(slider, note))
 				continue;
 			slider->SetHasHeadNote(true);
-			slider->SetHeadBeforeJumpLineLayer(note->get_beforeJumpNoteLineLayer());
-			if(slider->get_sliderType() != SliderData::Type::Burst) {
+			slider->SetHeadBeforeJumpLineLayer(note->beforeJumpNoteLineLayer);
+			if(slider->sliderType != SliderData::Type::Burst) {
 				note->ChangeToSliderHead();
 				continue;
 			}
 			note->ChangeToBurstSliderHead();
-			if(note->get_cutDirection() != slider->get_tailCutDirection())
+			if(note->cutDirection != slider->tailCutDirection)
 				continue;
-			UnityEngine::Vector2 line = StaticBeatmapObjectSpawnMovementData::Get2DNoteOffset(note->get_lineIndex(), self->numberOfLines, note->get_noteLineLayer()) - StaticBeatmapObjectSpawnMovementData::Get2DNoteOffset(slider->get_tailLineIndex(), self->numberOfLines, slider->get_tailLineLayer());
-			float num = Vector2Extensions::SignedAngleToLine(NoteCutDirectionExtensions::Direction(note->get_cutDirection()), line);
+			UnityEngine::Vector2 line = StaticBeatmapObjectSpawnMovementData::Get2DNoteOffset(note->lineIndex, self->numberOfLines, note->noteLineLayer) - StaticBeatmapObjectSpawnMovementData::Get2DNoteOffset(slider->tailLineIndex, self->numberOfLines, slider->tailLineLayer);
+			float num = Vector2Extensions::SignedAngleToLine(NoteCutDirectionExtensions::Direction(note->cutDirection), line);
 			if(abs(num) > 40)
 				continue;
 			note->SetCutDirectionAngleOffset(num);
@@ -262,7 +254,7 @@ MAKE_HOOK_MATCH(BeatmapObjectsInTimeRowProcessor_HandleCurrentTimeSliceAllNotesA
 			if(!SliderTailPositionOverlapsWithNote(slider, note))
 				continue;
 			slider->SetHasTailNote(true);
-			slider->SetTailBeforeJumpLineLayer(note->get_beforeJumpNoteLineLayer());
+			slider->SetTailBeforeJumpLineLayer(note->beforeJumpNoteLineLayer);
 			note->ChangeToSliderTail();
 		}
 	}
@@ -276,18 +268,18 @@ MAKE_HOOK_MATCH(BeatmapObjectSpawnMovementData_GetNoteOffset, &BeatmapObjectSpaw
 		noteLineIndex += 2000;
 	else if(noteLineIndex < 1000)
 		return result;
-	float num = -(self->get_noteLinesCount() - 1) * .5f;
+	float num = -(self->noteLinesCount - 1) * .5f;
 	num += noteLineIndex * (StaticBeatmapObjectSpawnMovementData::kNoteLinesDistance / 1000);
-	return self->rightVec * num + UnityEngine::Vector3(0, StaticBeatmapObjectSpawnMovementData::LineYPosForLineLayer(noteLineLayer), 0);
+	return Sombrero::FastVector3(self->rightVec) * num + Sombrero::FastVector3(0, StaticBeatmapObjectSpawnMovementData::LineYPosForLineLayer(noteLineLayer), 0);
 }
 
 MAKE_HOOK_MATCH(BeatmapObjectSpawnMovementData_Get2DNoteOffset, &BeatmapObjectSpawnMovementData::Get2DNoteOffset, UnityEngine::Vector2, BeatmapObjectSpawnMovementData* self, int noteLineIndex, GlobalNamespace::NoteLineLayer noteLineLayer) {
-	UnityEngine::Vector2 __result = BeatmapObjectSpawnMovementData_Get2DNoteOffset(self, noteLineIndex, noteLineLayer);
+	UnityEngine::Vector2 result = BeatmapObjectSpawnMovementData_Get2DNoteOffset(self, noteLineIndex, noteLineLayer);
 	if(noteLineIndex <= -1000)
 		noteLineIndex += 2000;
 	else if(noteLineIndex < 1000)
-		return __result;
-	float num = -(self->get_noteLinesCount() - 1) * .5f;
+		return result;
+	float num = -(self->noteLinesCount - 1) * .5f;
 	float x = num + noteLineIndex * (StaticBeatmapObjectSpawnMovementData::kNoteLinesDistance / 1000);
 	float y = StaticBeatmapObjectSpawnMovementData::LineYPosForLineLayer(noteLineLayer);
 	return UnityEngine::Vector2(x, y);
@@ -299,9 +291,9 @@ MAKE_HOOK_MATCH(BeatmapObjectSpawnMovementData_GetObstacleOffset, &BeatmapObject
 		noteLineIndex += 2000;
 	else if(noteLineIndex < 1000)
 		return result;
-	float num = -(self->get_noteLinesCount() - 1) * .5f;
+	float num = -(self->noteLinesCount - 1) * .5f;
 	num += noteLineIndex * (StaticBeatmapObjectSpawnMovementData::kNoteLinesDistance / 1000);
-	return self->rightVec * num + UnityEngine::Vector3(0, StaticBeatmapObjectSpawnMovementData::LineYPosForLineLayer(noteLineLayer) + StaticBeatmapObjectSpawnMovementData::kObstacleVerticalOffset, 0);
+	return Sombrero::FastVector3(self->rightVec) * num + Sombrero::FastVector3(0, StaticBeatmapObjectSpawnMovementData::LineYPosForLineLayer(noteLineLayer) + StaticBeatmapObjectSpawnMovementData::kObstacleVerticalOffset, 0);
 }
 
 MAKE_HOOK_MATCH(BeatmapObjectSpawnMovementData_HighestJumpPosYForLineLayer, &BeatmapObjectSpawnMovementData::HighestJumpPosYForLineLayer, float, BeatmapObjectSpawnMovementData* self, NoteLineLayer lineLayer) {
@@ -370,9 +362,9 @@ MAKE_HOOK_MATCH(NoteCutDirectionExtensions_Direction, &NoteCutDirectionExtension
 		offset = 1000;
 	else if(cutDirection < 2000 || cutDirection > 2360)
 		return result;
-	UnityEngine::Quaternion quaternion = UnityEngine::Quaternion();
+	Sombrero::FastQuaternion quaternion = Sombrero::FastQuaternion();
 	quaternion.set_eulerAngles(UnityEngine::Vector3(0, 0, offset - cutDirection));
-	UnityEngine::Vector3 dir = quaternion * UnityEngine::Vector3::get_down();
+	Sombrero::FastVector3 dir = quaternion * Sombrero::FastVector3::down();
 	return UnityEngine::Vector2(dir.x, dir.y);
 }
 
@@ -407,8 +399,8 @@ static inline bool MirrorPrecisionLineIndex(int32_t *lineIndex) {
 }
 
 MAKE_HOOK_MATCH(NoteData_Mirror, &NoteData::Mirror, void, NoteData* self, int lineCount) {
-	int32_t lineIndex = self->get_lineIndex();
-	int32_t flipLineIndex = self->get_flipLineIndex();
+	int32_t lineIndex = self->lineIndex;
+	int32_t flipLineIndex = self->flipLineIndex;
 	NoteData_Mirror(self, lineCount);
 	if(MirrorPrecisionLineIndex(&lineIndex))
 		self->set_lineIndex(lineIndex);
@@ -494,40 +486,40 @@ MAKE_HOOK_MATCH(ObstacleController_Init, &ObstacleController::Init, void, Obstac
 }
 
 MAKE_HOOK_MATCH(ObstacleData_Mirror, &ObstacleData::Mirror, void, ObstacleData* self, int lineCount) {
-	int32_t lineIndex = self->get_lineIndex();
+	int32_t lineIndex = self->lineIndex;
 	ObstacleData_Mirror(self, lineCount);
-	if(lineIndex >= 1000 || lineIndex <= -1000 || self->get_width() >= 1000 || self->get_width() <= -1000) {
+	if(lineIndex >= 1000 || lineIndex <= -1000 || self->width >= 1000 || self->width <= -1000) {
 		int32_t newIndex = (ToNormalizedPrecisionIndex(lineIndex) - 2000) * -1 + 2000;
-		int32_t newWidth = ToNormalizedPrecisionIndex(self->get_width());
+		int32_t newWidth = ToNormalizedPrecisionIndex(self->width);
 		newIndex -= newWidth;
-		self->set_lineIndex((newIndex < 0) ? newIndex - 1000 : newIndex + 1000);
+		self->lineIndex = (newIndex < 0) ? newIndex - 1000 : newIndex + 1000;
 	} else if(lineIndex < 0 || lineIndex > 3) {
 		int32_t mirrorLane = (lineIndex - 2) * -1 + 2;
-		self->set_lineIndex(mirrorLane - self->get_width());
+		self->lineIndex = mirrorLane - self->width;
 	}
 }
 
 MAKE_HOOK_MATCH(SliderData_Mirror, &SliderData::Mirror, void, SliderData *self, int lineCount) {
-	int32_t headLineIndex = self->get_headLineIndex();
-	int32_t tailLineIndex = self->get_tailLineIndex();
+	int32_t headLineIndex = self->headLineIndex;
+	int32_t tailLineIndex = self->tailLineIndex;
 	SliderData_Mirror(self, lineCount);
 	if(MirrorPrecisionLineIndex(&headLineIndex))
-		self->set_headLineIndex(headLineIndex);
+		self->headLineIndex = headLineIndex;
 	if(MirrorPrecisionLineIndex(&tailLineIndex))
-		self->set_tailLineIndex(tailLineIndex);
+		self->tailLineIndex = tailLineIndex;
 }
 
 MAKE_HOOK_MATCH(SliderMeshController_CutDirectionToControlPointPosition, &SliderMeshController::CutDirectionToControlPointPosition, UnityEngine::Vector3, NoteCutDirection noteCutDirection) {
 	UnityEngine::Vector3 result = SliderMeshController_CutDirectionToControlPointPosition(noteCutDirection);
 	if(noteCutDirection >= 1000 && noteCutDirection <= 1360) {
-		UnityEngine::Quaternion quaternion = UnityEngine::Quaternion();
+		Sombrero::FastQuaternion quaternion = Sombrero::FastQuaternion();
 		quaternion.set_eulerAngles(UnityEngine::Vector3(0, 0, 1000 - noteCutDirection));
-		return quaternion * UnityEngine::Vector3::get_down();
+		return quaternion * Sombrero::FastVector3::down();
 	}
 	if(noteCutDirection >= 2000 && noteCutDirection <= 2360) {
-		UnityEngine::Quaternion quaternion = UnityEngine::Quaternion();
+		Sombrero::FastQuaternion quaternion = Sombrero::FastQuaternion();
 		quaternion.set_eulerAngles(UnityEngine::Vector3(0, 0, 2000 - noteCutDirection));
-		return quaternion * UnityEngine::Vector3::get_down();
+		return quaternion * Sombrero::FastVector3::down();
 	}
 	return result;
 }
@@ -564,6 +556,13 @@ MAKE_HOOK_MATCH(StaticBeatmapObjectSpawnMovementData_LineYPosForLineLayer, &Stat
 /*MAKE_HOOK_MATCH(BeatmapDataObstaclesMergingTransform_CreateTransformedData, &BeatmapDataObstaclesMergingTransform::CreateTransformedData, IReadonlyBeatmapData *, IReadonlyBeatmapData *beatmapData) {
 	return beatmapData;
 }*/
+
+extern "C" void setup(ModInfo& info) {
+	info.id = "MappingExtensions";
+	info.version = "0.21.0";
+	modInfo = info;
+	logger().info("Leaving setup!");
+}
 
 extern "C" void load() {
 	logger().info("Installing ME Hooks, please wait");
