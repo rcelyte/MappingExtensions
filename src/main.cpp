@@ -1,5 +1,5 @@
 // https://github.com/rxzz0/MappingExtensions/blob/main/src/main.cpp
-// Refactored and updated to 1.21.0 by rcelyte
+// Refactored and updated to 1.24.0 by rcelyte
 
 #include <array>
 #include <limits>
@@ -103,14 +103,14 @@ Logger& logger() {
 
 // Normalized indices are faster to compute & reverse, and more accurate than, effective indices (see below).
 // A "normalized" precision index is an effective index * 1000. So unlike normal precision indices, only 0 is 0.
-int ToNormalizedPrecisionIndex(int index) {
+static int ToNormalizedPrecisionIndex(int index) {
 	if(index <= -1000)
 		return index + 1000;
 	if(index >= 1000)
 		return index - 1000;
 	return index * 1000;
 }
-int FromNormalizedPrecisionIndex(int index) {
+/*int FromNormalizedPrecisionIndex(int index) {
 	if(index % 1000 == 0) {
 		return index / 1000;
 	} else if(index > 0) {
@@ -118,18 +118,12 @@ int FromNormalizedPrecisionIndex(int index) {
 	} else {
 		return index - 1000;
 	}
-}
+}*/
 
 // An effective index is a normal/extended index, but with decimal places that do what you'd expect.
-float ToEffectiveIndex(int index) {
-	float effectiveIndex = index;
-	if(effectiveIndex <= -1000) {
-		effectiveIndex = effectiveIndex / 1000.0f + 1.0f;
-	} else if(effectiveIndex >= 1000) {
-		effectiveIndex = effectiveIndex / 1000.0f - 1.0f;
-	}
-	return effectiveIndex;
-}
+/*float ToEffectiveIndex(int index) {
+	return ToNormalizedPrecisionIndex(index) / 1000.f;
+}*/
 
 static BeatmapCharacteristicSO* storedBeatmapCharacteristicSO = nullptr;
 MAKE_HOOK_MATCH(StandardLevelDetailView_RefreshContent, &StandardLevelDetailView::RefreshContent, void, StandardLevelDetailView* self) {
@@ -165,6 +159,7 @@ static void AddAllToVector(auto& vec, auto const& list) {
 	std::copy(list->items.begin(), list->items.end(), std::back_inserter(vec));
 }
 
+// TODO: Support both vanilla and CustomJSONData sorting orders
 static void SortVector(auto& vec) {
 	for(auto it = vec.begin(); it != vec.end();) {
 		if(*it)
@@ -277,10 +272,10 @@ static std::vector<int32_t> lineIndexes; // TODO: should we worry about RAM here
 	return BeatmapObjectsInTimeRowProcessor_SliderHeadPositionOverlapsWithNote(slider, note);
 }*/
 
-static bool SliderHeadPositionOverlapsWithNote(SliderData *slider, NoteData *note) {
+static inline bool SliderHeadPositionOverlapsWithNote(SliderData *slider, NoteData *note) {
 	return slider->headLineIndex == note->lineIndex && slider->headLineLayer == note->noteLineLayer;
 }
-static bool SliderTailPositionOverlapsWithNote(SliderData *slider, NoteData *note) {
+static inline bool SliderTailPositionOverlapsWithNote(SliderData *slider, NoteData *note) {
 	return slider->tailLineIndex == note->lineIndex && slider->tailLineLayer == note->noteLineLayer;
 }
 MAKE_HOOK_MATCH(BeatmapObjectsInTimeRowProcessor_HandleCurrentTimeSliceAllNotesAndSlidersDidFinishTimeSlice, &BeatmapObjectsInTimeRowProcessor::HandleCurrentTimeSliceAllNotesAndSlidersDidFinishTimeSlice, void, BeatmapObjectsInTimeRowProcessor *self, ::GlobalNamespace::BeatmapObjectsInTimeRowProcessor::TimeSliceContainer_1<::GlobalNamespace::BeatmapDataItem*>* allObjectsTimeSlice, float nextTimeSliceTime) {
@@ -369,7 +364,7 @@ MAKE_HOOK_MATCH(BeatmapObjectSpawnMovementData_GetNoteOffset, &BeatmapObjectSpaw
 	else if(noteLineIndex < 1000)
 		return result;
 	float num = -(self->noteLinesCount - 1) * .5f;
-	num += noteLineIndex * (StaticBeatmapObjectSpawnMovementData::kNoteLinesDistance / 1000);
+	num += noteLineIndex * (StaticBeatmapObjectSpawnMovementData::kNoteLinesDistance / 1000.f);
 	return Sombrero::FastVector3(self->rightVec) * num + Sombrero::FastVector3(0, StaticBeatmapObjectSpawnMovementData::LineYPosForLineLayer(noteLineLayer), 0);
 }
 
@@ -380,7 +375,7 @@ MAKE_HOOK_MATCH(BeatmapObjectSpawnMovementData_Get2DNoteOffset, &BeatmapObjectSp
 	else if(noteLineIndex < 1000)
 		return result;
 	float num = -(self->noteLinesCount - 1) * .5f;
-	float x = num + noteLineIndex * (StaticBeatmapObjectSpawnMovementData::kNoteLinesDistance / 1000);
+	float x = num + noteLineIndex * (StaticBeatmapObjectSpawnMovementData::kNoteLinesDistance / 1000.f);
 	float y = StaticBeatmapObjectSpawnMovementData::LineYPosForLineLayer(noteLineLayer);
 	return UnityEngine::Vector2(x, y);
 }
@@ -392,7 +387,7 @@ MAKE_HOOK_MATCH(BeatmapObjectSpawnMovementData_GetObstacleOffset, &BeatmapObject
 	else if(noteLineIndex < 1000)
 		return result;
 	float num = -(self->noteLinesCount - 1) * .5f;
-	num += noteLineIndex * (StaticBeatmapObjectSpawnMovementData::kNoteLinesDistance / 1000);
+	num += noteLineIndex * (StaticBeatmapObjectSpawnMovementData::kNoteLinesDistance / 1000.f);
 	return Sombrero::FastVector3(self->rightVec) * num + Sombrero::FastVector3(0, StaticBeatmapObjectSpawnMovementData::LineYPosForLineLayer(noteLineLayer) + StaticBeatmapObjectSpawnMovementData::kObstacleVerticalOffset, 0);
 }
 
@@ -400,34 +395,31 @@ MAKE_HOOK_MATCH(BeatmapObjectSpawnMovementData_HighestJumpPosYForLineLayer, &Bea
 	float result = BeatmapObjectSpawnMovementData_HighestJumpPosYForLineLayer(self, lineLayer);
 	float delta = (self->topLinesHighestJumpPosY - self->upperLinesHighestJumpPosY);
 	if(lineLayer >= 1000 || lineLayer <= -1000)
-		return self->upperLinesHighestJumpPosY - delta - delta + self->jumpOffsetYProvider->get_jumpOffsetY() + lineLayer * (delta / 1000);
+		return self->upperLinesHighestJumpPosY - delta - delta + self->jumpOffsetYProvider->get_jumpOffsetY() + lineLayer * (delta / 1000.f);
 	if(lineLayer > 2 || lineLayer < 0)
 		return self->upperLinesHighestJumpPosY - delta + self->jumpOffsetYProvider->get_jumpOffsetY() + (lineLayer * delta);
 	return result;
 }
 
-static float SpawnRotationForEventValue(float orig, int index) {
+static inline float SpawnRotationForEventValue(float orig, int index) {
 	if(storedBeatmapCharacteristicSO->requires360Movement && index >= 1000 && index <= 1720)
 		return index - 1360;
 	return orig;
 }
 
-static int GetHeightForObstacleType(int orig, BeatmapSaveDataVersion2_6_0AndEarlier::BeatmapSaveData::ObstacleType obstacleType) {
+static inline int GetHeightForObstacleType(int orig, BeatmapSaveDataVersion2_6_0AndEarlier::BeatmapSaveData::ObstacleType obstacleType) {
 	if((obstacleType < 1000 || obstacleType > 4000) && (obstacleType < 4001 || obstacleType > 4005000))
 		return orig;
-	int32_t obsHeight;
+	int32_t obsHeight = obstacleType - 1000;
 	if(obstacleType >= 4001 && obstacleType <= 4100000)
 		obsHeight = (obstacleType - 4001) / 1000;
-	else
-		obsHeight = obstacleType - 1000;
-	float height = obsHeight / 1000.f * 5;
-	return height * 1000 + 1000;
+	return obsHeight * 5 + 1000;
 }
 
-static int GetLayerForObstacleType(int orig, BeatmapSaveDataVersion2_6_0AndEarlier::BeatmapSaveData::ObstacleType obstacleType) {
+static inline int GetLayerForObstacleType(int orig, BeatmapSaveDataVersion2_6_0AndEarlier::BeatmapSaveData::ObstacleType obstacleType) {
 	if((obstacleType < 1000 || obstacleType > 4000) && (obstacleType < 4001 || obstacleType > 4005000))
 		return orig;
-	int startHeight = 0;
+	int32_t startHeight = 0;
 	if(obstacleType >= 4001 && obstacleType <= 4100000)
 		startHeight = (obstacleType - 4001) % 1000;
 	float layer = startHeight / 750.f * 5;
@@ -526,22 +518,23 @@ MAKE_HOOK_MATCH(NoteData_Mirror, &NoteData::Mirror, void, NoteData* self, int li
 		self->set_flipLineIndex(flipLineIndex);
 }
 
-MAKE_HOOK_MATCH(NoteJump_Init, &NoteJump::Init, void, NoteJump *self, float beatTime, float worldRotation, ::UnityEngine::Vector3 startPos, ::UnityEngine::Vector3 endPos, float jumpDuration, float gravity, float flipYSide, float endRotation, bool rotateTowardsPlayer, bool useRandomRotation) {
+// fixed in vanilla 1.22.1
+/*MAKE_HOOK_MATCH(NoteJump_Init, &NoteJump::Init, void, NoteJump *self, float beatTime, float worldRotation, ::UnityEngine::Vector3 startPos, ::UnityEngine::Vector3 endPos, float jumpDuration, float gravity, float flipYSide, float endRotation, bool rotateTowardsPlayer, bool useRandomRotation) {
 	if(endPos.x + endPos.y > .0001)
 		return NoteJump_Init(self, beatTime, worldRotation, startPos, endPos, jumpDuration, gravity, flipYSide, endRotation, rotateTowardsPlayer, useRandomRotation);
 	UnityEngine::Vector3 safeEnd = UnityEngine::Vector3(abs(endPos.x), abs(endPos.y), endPos.z);
 	NoteJump_Init(self, beatTime, worldRotation, startPos, safeEnd, jumpDuration, gravity, flipYSide, endRotation, rotateTowardsPlayer, useRandomRotation);
 	self->endPos = endPos;
 	self->moveVec = (endPos - startPos) / jumpDuration;
-}
+}*/
 
 // idk what this was all the old stuff was for, but here's the ported transpiler
 MAKE_HOOK_MATCH(ObstacleController_Init, &ObstacleController::Init, void, ObstacleController* self, ObstacleData* obstacleData, float worldRotation, UnityEngine::Vector3 startPos, UnityEngine::Vector3 midPos, UnityEngine::Vector3 endPos, float move1Duration, float move2Duration, float singleLineWidth, float height) {
-	if(height <= -1000)
+	if(obstacleData->height <= -1000)
 		height = (obstacleData->height + 2000) / 1000.f * StaticBeatmapObjectSpawnMovementData::kNoteLinesDistance;
-	else if(height >= 1000)
+	else if(obstacleData->height >= 1000)
 		height = (obstacleData->height - 1000) / 1000.f * StaticBeatmapObjectSpawnMovementData::kNoteLinesDistance;
-	else if(height > 2)
+	else if(obstacleData->height > 2)
 		height = obstacleData->height * StaticBeatmapObjectSpawnMovementData::kNoteLinesDistance;
 
 	int32_t oldWidth = obstacleData->width;
@@ -646,7 +639,7 @@ MAKE_HOOK_MATCH(StaticBeatmapObjectSpawnMovementData_LineYPosForLineLayer, &Stat
 	float result = StaticBeatmapObjectSpawnMovementData_LineYPosForLineLayer(lineLayer);
 	constexpr float delta = StaticBeatmapObjectSpawnMovementData::kTopLinesYPos - StaticBeatmapObjectSpawnMovementData::kUpperLinesYPos;
 	if(lineLayer >= 1000 || lineLayer <= -1000)
-		return StaticBeatmapObjectSpawnMovementData::kUpperLinesYPos - delta - delta + lineLayer * (delta / 1000);
+		return StaticBeatmapObjectSpawnMovementData::kUpperLinesYPos - delta - delta + lineLayer * (delta / 1000.f);
 	if(lineLayer > 2 || lineLayer < 0)
 		return StaticBeatmapObjectSpawnMovementData::kUpperLinesYPos - delta + lineLayer * delta;
 	return result;
@@ -708,7 +701,7 @@ extern "C" DL_EXPORT void load() {
 	INSTALL_HOOK(hookLogger, NoteCutDirectionExtensions_RotationAngle);
 	INSTALL_HOOK(hookLogger, NoteCutDirectionExtensions_Mirrored);
 	INSTALL_HOOK(hookLogger, NoteData_Mirror);
-	INSTALL_HOOK(hookLogger, NoteJump_Init); // Fixed in 1.22.1
+	// INSTALL_HOOK(hookLogger, NoteJump_Init);
 	INSTALL_HOOK(hookLogger, ObstacleController_Init);
 	INSTALL_HOOK(hookLogger, ObstacleData_Mirror);
 	INSTALL_HOOK(hookLogger, SliderData_Mirror);

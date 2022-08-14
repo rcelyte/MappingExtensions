@@ -25,17 +25,12 @@
 		},
 		{
 			"id": "pinkcore",
-			"versionRange": "^1.6.8",
-			"additionalData": {}
-		},
-		{
-			"id": "qosmetics-api",
-			"versionRange": "^0.1.4",
+			"versionRange": "^1.7.0",
 			"additionalData": {}
 		},
 		{
 			"id": "sombrero",
-			"versionRange": "^0.1.34",
+			"versionRange": "^0.1.35",
 			"additionalData": {}
 		},
 		{
@@ -45,7 +40,7 @@
 		},
 		{
 			"id": "modloader",
-			"versionRange": "*",
+			"versionRange": "^1.2.3",
 			"additionalData": {}
 		}
 	],
