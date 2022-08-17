@@ -544,7 +544,7 @@ MAKE_HOOK_MATCH(ObstacleController_Init, &ObstacleController::Init, void, Obstac
 		obstacleData->width = oldWidth - 1000;
 	else
 		return ObstacleController_Init(self, obstacleData, worldRotation, startPos, midPos, endPos, move1Duration, move2Duration, singleLineWidth, height);
-	float fix = singleLineWidth * (.5f - .5f / 1000);
+	float fix = singleLineWidth * (-999.f / 1000) * .5f;
 	midPos.x += fix;
 	endPos.x += fix;
 	ObstacleController_Init(self, obstacleData, worldRotation, startPos, midPos, endPos, move1Duration, move2Duration, singleLineWidth / 1000, height);
@@ -600,12 +600,12 @@ MAKE_HOOK_MATCH(ObstacleData_Mirror, &ObstacleData::Mirror, void, ObstacleData* 
 	int32_t lineIndex = self->lineIndex;
 	ObstacleData_Mirror(self, lineCount);
 	if(lineIndex >= 1000 || lineIndex <= -1000 || self->width >= 1000 || self->width <= -1000) {
-		int32_t newIndex = (ToNormalizedPrecisionIndex(lineIndex) - 2000) * -1 + 2000;
+		int32_t newIndex = 4000 - ToNormalizedPrecisionIndex(lineIndex);
 		int32_t newWidth = ToNormalizedPrecisionIndex(self->width);
 		newIndex -= newWidth;
 		self->lineIndex = (newIndex < 0) ? newIndex - 1000 : newIndex + 1000;
 	} else if(lineIndex < 0 || lineIndex > 3) {
-		int32_t mirrorLane = (lineIndex - 2) * -1 + 2;
+		int32_t mirrorLane = 4 - lineIndex;
 		self->lineIndex = mirrorLane - self->width;
 	}
 }
