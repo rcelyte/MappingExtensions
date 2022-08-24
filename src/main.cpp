@@ -182,9 +182,9 @@ MAKE_HOOK_MATCH(BeatmapDataLoader_GetBeatmapDataFromBeatmapSaveData, &BeatmapDat
 			BeatmapSaveDataVersion3::BeatmapSaveData::BeatmapSaveDataItem *saveNote = source->get_Item((*sourceIndex)++);
 			GlobalNamespace::NoteLineLayer oldLayer = data->noteLineLayer;
 			if(BeatmapSaveDataVersion3::BeatmapSaveData::ColorNoteData *saveData = il2cpp_utils::try_cast<BeatmapSaveDataVersion3::BeatmapSaveData::ColorNoteData>(saveNote).value_or(nullptr); saveData)
-				data->beforeJumpNoteLineLayer = data->noteLineLayer = saveData->get_layer();
+				data->noteLineLayer = saveData->get_layer();
 			else if(BeatmapSaveDataVersion3::BeatmapSaveData::BombNoteData *saveData = il2cpp_utils::try_cast<BeatmapSaveDataVersion3::BeatmapSaveData::BombNoteData>(saveNote).value_or(nullptr); saveData)
-				data->beforeJumpNoteLineLayer = data->noteLineLayer = saveData->get_layer();
+				data->noteLineLayer = saveData->get_layer();
 			else
 				logger().error("Failed to cast note data");
 			if(data->noteLineLayer != oldLayer)
