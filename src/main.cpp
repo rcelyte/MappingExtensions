@@ -107,19 +107,12 @@ static const std::array<const char*, 4> requirementNames = {
 
 static bool active = false;
 static void CheckRequirements(const std::vector<std::string> &requirements) {
-	active = std::any_of(requirements.begin(), requirements.end(), [](const std::string &req) {
-		return std::any_of(requirementNames.begin(), requirementNames.end(), [req](const char *name) {
-			return req == name;
-		});
-	});
+	active = !std::any_of(requirements.begin(), requirements.end(), [](auto const& s) {return s == "Noodle Extensions";});
 }
 
 static BeatmapCharacteristicSO* storedBeatmapCharacteristicSO = nullptr;
 MAKE_HOOK_MATCH(StandardLevelDetailView_RefreshContent, &StandardLevelDetailView::RefreshContent, void, StandardLevelDetailView* self) {
-	active = false;
-	PinkCore::API::GetFoundRequirementCallbackSafe() += CheckRequirements;
 	StandardLevelDetailView_RefreshContent(self);
-	PinkCore::API::GetFoundRequirementCallbackSafe() -= CheckRequirements;
 	storedBeatmapCharacteristicSO = self->get_selectedDifficultyBeatmap()->get_parentDifficultyBeatmapSet()->get_beatmapCharacteristic();
 }
 MAKE_HOOK_MATCH(MainMenuViewController_DidActivate, &MainMenuViewController::DidActivate, void, MainMenuViewController* self, bool firstActivation, bool addedToHierarchy, bool screenSystemEnabling) {
@@ -571,7 +564,7 @@ MAKE_HOOK_MATCH(StaticBeatmapObjectSpawnMovementData_LineYPosForLineLayer, &Stat
 
 extern "C" DL_EXPORT void setup(ModInfo& info) {
 	info.id = "MappingExtensions";
-	info.version = "0.21.0";
+	info.version = "0.21.1";
 	modInfo = info;
 	logger = new Logger(modInfo, LoggerOptions(false, true));
 	logger->info("Leaving setup!");
@@ -608,4 +601,5 @@ extern "C" DL_EXPORT void load() {
 	logger->info("Installed ME Hooks successfully!");
 	for(const char *name : requirementNames)
 		PinkCore::RequirementAPI::RegisterInstalled(name);
+	PinkCore::API::GetFoundRequirementCallbackSafe() += CheckRequirements;
 }
