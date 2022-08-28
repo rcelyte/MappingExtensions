@@ -107,7 +107,14 @@ static const std::array<const char*, 4> requirementNames = {
 
 static bool active = false;
 static void CheckRequirements(const std::vector<std::string> &requirements) {
-	active = !std::any_of(requirements.begin(), requirements.end(), [](auto const& s) {return s == "Noodle Extensions";});
+	logger->info("CheckRequirements()");
+	for(std::string req : requirements)
+		logger->info("    %s", req.c_str());
+	active = std::any_of(requirements.begin(), requirements.end(), [](const std::string &req) {
+		return std::any_of(requirementNames.begin(), requirementNames.end(), [req](const char *name) {
+			return req == name;
+		});
+	});
 }
 
 static BeatmapCharacteristicSO* storedBeatmapCharacteristicSO = nullptr;
@@ -133,8 +140,6 @@ MAKE_HOOK_MATCH(BeatmapDataLoader_GetBeatmapDataFromBeatmapSaveData, &BeatmapDat
 	uint32_t noteIndex = 0, bombIndex = 0, obstacleIndex = 0, sliderIndex = 0, burstIndex = 0, waypointIndex = 0;
 
 	BeatmapData *result = BeatmapDataLoader_GetBeatmapDataFromBeatmapSaveData(beatmapSaveData, beatmapDifficulty, startBpm, loadingForDesignatedEnvironment, environmentKeywords, environmentLightGroups, defaultEnvironmentEvents, playerSpecificSettings);
-	if(!active)
-		return result;
 	logger->info("Restoring %u notes, %u bombs, %u obstacles, %u sliders, %u burst sliders, and %u waypoints", notes->get_Count(), bombs->get_Count(), obstacles->get_Count(), sliders->get_Count(), bursts->get_Count(), waypoints->get_Count());
 	for(System::Collections::Generic::LinkedListNode_1<BeatmapDataItem*> *iter = result->get_allBeatmapDataItems()->head, *end = iter ? iter->prev : NULL; iter; iter = iter->next) {
 		BeatmapDataItem *item = iter->item;
@@ -148,15 +153,15 @@ MAKE_HOOK_MATCH(BeatmapDataLoader_GetBeatmapDataFromBeatmapSaveData, &BeatmapDat
 				goto next;
 			}
 			BeatmapSaveDataVersion3::BeatmapSaveData::BeatmapSaveDataItem *saveNote = source->get_Item((*sourceIndex)++);
-			GlobalNamespace::NoteLineLayer oldLayer = data->noteLineLayer;
+			// GlobalNamespace::NoteLineLayer oldLayer = data->noteLineLayer;
 			if(BeatmapSaveDataVersion3::BeatmapSaveData::ColorNoteData *saveData = il2cpp_utils::try_cast<BeatmapSaveDataVersion3::BeatmapSaveData::ColorNoteData>(saveNote).value_or(nullptr); saveData)
 				data->noteLineLayer = saveData->get_layer();
 			else if(BeatmapSaveDataVersion3::BeatmapSaveData::BombNoteData *saveData = il2cpp_utils::try_cast<BeatmapSaveDataVersion3::BeatmapSaveData::BombNoteData>(saveNote).value_or(nullptr); saveData)
 				data->noteLineLayer = saveData->get_layer();
 			else
 				logger->error("Failed to cast note data");
-			if(data->noteLineLayer != oldLayer)
-				logger->info("    NoteData restore %d -> %d", (int)oldLayer, (int)data->noteLineLayer);
+			/*if(data->noteLineLayer != oldLayer)
+				logger->info("    NoteData restore %d -> %d", (int)oldLayer, (int)data->noteLineLayer);*/
 		} else if(ObstacleData *data = il2cpp_utils::try_cast<ObstacleData>(item).value_or(nullptr); data) {
 			if(obstacleIndex >= obstacles->get_Count()) {
 				logger->warning("Failed to restore line layer for ObstacleData");
@@ -167,10 +172,10 @@ MAKE_HOOK_MATCH(BeatmapDataLoader_GetBeatmapDataFromBeatmapSaveData, &BeatmapDat
 				logger->error("ObstacleData should not be null!");
 				goto next;
 			}
-			GlobalNamespace::NoteLineLayer oldLayer = data->lineLayer;
+			// GlobalNamespace::NoteLineLayer oldLayer = data->lineLayer;
 			data->lineLayer = saveData->get_layer();
-			if(data->lineLayer != oldLayer)
-				logger->info("    ObstacleData restore %d -> %d", (int)oldLayer, (int)data->lineLayer);
+			/*if(data->lineLayer != oldLayer)
+				logger->info("    ObstacleData restore %d -> %d", (int)oldLayer, (int)data->lineLayer);*/
 		} else if(SliderData *data = il2cpp_utils::try_cast<SliderData>(item).value_or(nullptr); data) {
 			System::Collections::Generic::IReadOnlyList_1<BeatmapSaveDataVersion3::BeatmapSaveData::BaseSliderData*> *source = (System::Collections::Generic::IReadOnlyList_1<BeatmapSaveDataVersion3::BeatmapSaveData::BaseSliderData*>*)sliders;
 			uint32_t *sourceIndex = &sliderIndex;
@@ -180,12 +185,12 @@ MAKE_HOOK_MATCH(BeatmapDataLoader_GetBeatmapDataFromBeatmapSaveData, &BeatmapDat
 				logger->warning("Failed to restore line layers for SliderData (%s)", ((void*)source == (void*)sliders) ? "Normal" : "Burst");
 				goto next;
 			}
-			GlobalNamespace::NoteLineLayer oldLayers[2] = {data->headLineLayer, data->tailLineLayer};
+			// GlobalNamespace::NoteLineLayer oldLayers[2] = {data->headLineLayer, data->tailLineLayer};
 			BeatmapSaveDataVersion3::BeatmapSaveData::BaseSliderData *saveData = source->get_Item((*sourceIndex)++);
 			data->headBeforeJumpLineLayer = data->headLineLayer = saveData->get_headLayer();
 			data->tailBeforeJumpLineLayer = data->tailLineLayer = saveData->get_tailLayer();
-			if(data->headLineLayer != oldLayers[0] || data->tailLineLayer != oldLayers[1])
-				logger->info("    SliderData restore (%d, %d) -> (%d, %d)", (int)oldLayers[0], (int)oldLayers[1], (int)data->headLineLayer, (int)data->tailLineLayer);
+			/*if(data->headLineLayer != oldLayers[0] || data->tailLineLayer != oldLayers[1])
+				logger->info("    SliderData restore (%d, %d) -> (%d, %d)", (int)oldLayers[0], (int)oldLayers[1], (int)data->headLineLayer, (int)data->tailLineLayer);*/
 		} else if(WaypointData *data = il2cpp_utils::try_cast<WaypointData>(item).value_or(nullptr); data) {
 			if(waypointIndex >= waypoints->get_Count()) {
 				logger->warning("Failed to restore line layer for WaypointData");
@@ -196,10 +201,10 @@ MAKE_HOOK_MATCH(BeatmapDataLoader_GetBeatmapDataFromBeatmapSaveData, &BeatmapDat
 				logger->error("WaypointData should not be null!");
 				goto next;
 			}
-			GlobalNamespace::NoteLineLayer oldLayer = data->lineLayer;
+			// GlobalNamespace::NoteLineLayer oldLayer = data->lineLayer;
 			data->lineLayer = saveData->get_layer();
-			if(data->lineLayer != oldLayer)
-				logger->info("    WaypointData restore %d -> %d", (int)oldLayer, (int)data->lineLayer);
+			/*if(data->lineLayer != oldLayer)
+				logger->info("    WaypointData restore %d -> %d", (int)oldLayer, (int)data->lineLayer);*/
 		}
 		next: // TODO: goto bad
 		if(iter == end)
@@ -219,8 +224,8 @@ static inline bool SliderTailPositionOverlapsWithNote(SliderData *slider, NoteDa
 	return slider->tailLineIndex == note->lineIndex && slider->tailLineLayer == note->noteLineLayer;
 }
 MAKE_HOOK_MATCH(BeatmapObjectsInTimeRowProcessor_HandleCurrentTimeSliceAllNotesAndSlidersDidFinishTimeSlice, &BeatmapObjectsInTimeRowProcessor::HandleCurrentTimeSliceAllNotesAndSlidersDidFinishTimeSlice, void, BeatmapObjectsInTimeRowProcessor *self, ::GlobalNamespace::BeatmapObjectsInTimeRowProcessor::TimeSliceContainer_1<::GlobalNamespace::BeatmapDataItem*>* allObjectsTimeSlice, float nextTimeSliceTime) {
-	if(!active)
-		return BeatmapObjectsInTimeRowProcessor_HandleCurrentTimeSliceAllNotesAndSlidersDidFinishTimeSlice(self, allObjectsTimeSlice, nextTimeSliceTime);
+	/*if(!active)
+		return BeatmapObjectsInTimeRowProcessor_HandleCurrentTimeSliceAllNotesAndSlidersDidFinishTimeSlice(self, allObjectsTimeSlice, nextTimeSliceTime);*/
 	lineIndexes.clear();
 	System::Collections::Generic::IReadOnlyList_1<BeatmapDataItem*> *items = allObjectsTimeSlice->get_items();
 	uint32_t itemCount = ((System::Collections::Generic::IReadOnlyCollection_1<BeatmapDataItem*>*)items)->get_Count();
@@ -376,11 +381,9 @@ static inline int GetLayerForObstacleType(int orig, BeatmapSaveDataVersion2_6_0A
 	return layer * 1000 + 1334;
 }
 
-// TODO: CustomJSONData hijacks `BeatmapSaveDataVersion3.BeatmapSaveData.DeserializeFromJSONString()`, bypassing this hook
 MAKE_HOOK_MATCH(BeatmapSaveData_ConvertBeatmapSaveData, &BeatmapSaveDataVersion3::BeatmapSaveData::ConvertBeatmapSaveData, BeatmapSaveDataVersion3::BeatmapSaveData*, BeatmapSaveDataVersion2_6_0AndEarlier::BeatmapSaveData *beatmapSaveData) {
 	BeatmapSaveDataVersion3::BeatmapSaveData *result = BeatmapSaveData_ConvertBeatmapSaveData(beatmapSaveData);
-	if(!active)
-		return result;
+	logger->info("BeatmapSaveData_ConvertBeatmapSaveData()");
 	for(uint32_t i = 0, count = result->obstacles->get_Count(); i < count; ++i) {
 		BeatmapSaveDataVersion2_6_0AndEarlier::BeatmapSaveData::ObstacleData *v2 = beatmapSaveData->obstacles->get_Item(i);
 		BeatmapSaveDataVersion3::BeatmapSaveData::ObstacleData *v3 = result->obstacles->get_Item(i);
@@ -564,7 +567,7 @@ MAKE_HOOK_MATCH(StaticBeatmapObjectSpawnMovementData_LineYPosForLineLayer, &Stat
 
 extern "C" DL_EXPORT void setup(ModInfo& info) {
 	info.id = "MappingExtensions";
-	info.version = "0.21.1";
+	info.version = "0.21.2";
 	modInfo = info;
 	logger = new Logger(modInfo, LoggerOptions(false, true));
 	logger->info("Leaving setup!");
