@@ -461,7 +461,7 @@ MAKE_HOOK_MATCH(NoteCutDirectionExtensions_Mirrored, &NoteCutDirectionExtensions
 
 static inline bool MirrorPrecisionLineIndex(int32_t *lineIndex) {
 	if(*lineIndex >= 1000 || *lineIndex <= -1000) {
-		*lineIndex = ((*lineIndex < 4000) ? 5000 : 3000) - *lineIndex;
+		*lineIndex = ((*lineIndex > -1000 && *lineIndex < 4000) ? 5000 : 3000) - *lineIndex;
 		return true;
 	}
 	if(*lineIndex > 3 || *lineIndex < 0) {
@@ -567,7 +567,7 @@ MAKE_HOOK_MATCH(StaticBeatmapObjectSpawnMovementData_LineYPosForLineLayer, &Stat
 
 extern "C" DL_EXPORT void setup(ModInfo& info) {
 	info.id = "MappingExtensions";
-	info.version = "0.21.2";
+	info.version = "0.21.3";
 	modInfo = info;
 	logger = new Logger(modInfo, LoggerOptions(false, true));
 	logger->info("Leaving setup!");
