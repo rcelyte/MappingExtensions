@@ -136,10 +136,10 @@ MAKE_HOOK_MATCH(BeatmapDataLoader_GetBeatmapDataFromBeatmapSaveData, &BeatmapDat
 	System::Collections::Generic::List_1<::BeatmapSaveDataVersion3::BeatmapSaveData::SliderData*> *sliders = beatmapSaveData->sliders;
 	System::Collections::Generic::List_1<::BeatmapSaveDataVersion3::BeatmapSaveData::BurstSliderData*> *bursts = beatmapSaveData->burstSliders;
 	System::Collections::Generic::List_1<BeatmapSaveDataVersion3::BeatmapSaveData::WaypointData*> *waypoints = beatmapSaveData->waypoints;
+	notes->Sort(); bombs->Sort(); obstacles->Sort(); sliders->Sort(); bursts->Sort(); waypoints->Sort();
+	BeatmapData *result = BeatmapDataLoader_GetBeatmapDataFromBeatmapSaveData(beatmapSaveData, beatmapDifficulty, startBpm, loadingForDesignatedEnvironment, environmentKeywords, environmentLightGroups, defaultEnvironmentEvents, playerSpecificSettings);
 
 	uint32_t noteIndex = 0, bombIndex = 0, obstacleIndex = 0, sliderIndex = 0, burstIndex = 0, waypointIndex = 0;
-
-	BeatmapData *result = BeatmapDataLoader_GetBeatmapDataFromBeatmapSaveData(beatmapSaveData, beatmapDifficulty, startBpm, loadingForDesignatedEnvironment, environmentKeywords, environmentLightGroups, defaultEnvironmentEvents, playerSpecificSettings);
 	logger->info("Restoring %u notes, %u bombs, %u obstacles, %u sliders, %u burst sliders, and %u waypoints", notes->get_Count(), bombs->get_Count(), obstacles->get_Count(), sliders->get_Count(), bursts->get_Count(), waypoints->get_Count());
 	for(System::Collections::Generic::LinkedListNode_1<BeatmapDataItem*> *iter = result->get_allBeatmapDataItems()->head, *end = iter ? iter->prev : NULL; iter; iter = iter->next) {
 		BeatmapDataItem *item = iter->item;
@@ -181,7 +181,7 @@ MAKE_HOOK_MATCH(BeatmapDataLoader_GetBeatmapDataFromBeatmapSaveData, &BeatmapDat
 			uint32_t *sourceIndex = &sliderIndex;
 			if(data->sliderType == SliderData::Type::Burst)
 				source = (System::Collections::Generic::IReadOnlyList_1<BeatmapSaveDataVersion3::BeatmapSaveData::BaseSliderData*>*)bursts, sourceIndex = &burstIndex;
-			if(sliderIndex >= ((System::Collections::Generic::IReadOnlyCollection_1<BeatmapSaveDataVersion3::BeatmapSaveData::BaseSliderData*>*)source)->get_Count()) {
+			if(*sourceIndex >= ((System::Collections::Generic::IReadOnlyCollection_1<BeatmapSaveDataVersion3::BeatmapSaveData::BaseSliderData*>*)source)->get_Count()) {
 				logger->warning("Failed to restore line layers for SliderData (%s)", ((void*)source == (void*)sliders) ? "Normal" : "Burst");
 				goto next;
 			}
@@ -567,7 +567,7 @@ MAKE_HOOK_MATCH(StaticBeatmapObjectSpawnMovementData_LineYPosForLineLayer, &Stat
 
 extern "C" DL_EXPORT void setup(ModInfo& info) {
 	info.id = "MappingExtensions";
-	info.version = "0.21.3";
+	info.version = "0.21.4";
 	modInfo = info;
 	logger = new Logger(modInfo, LoggerOptions(false, true));
 	logger->info("Leaving setup!");
