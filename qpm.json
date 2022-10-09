@@ -4,14 +4,14 @@
 	"info": {
 		"name": "MappingExtensions",
 		"id": "MappingExtensions",
-		"version": "0.21.4",
+		"version": "0.21.5",
 		"url": null,
 		"additionalData": {}
 	},
 	"dependencies": [
 		{
 			"id": "beatsaber-hook",
-			"versionRange": "^3.10.0",
+			"versionRange": "^3.14.0",
 			"additionalData": {
 				"extraFiles": [
 					"src/inline-hook"

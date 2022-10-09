@@ -117,16 +117,6 @@ static void CheckRequirements(const std::vector<std::string> &requirements) {
 	});
 }
 
-static BeatmapCharacteristicSO* storedBeatmapCharacteristicSO = nullptr;
-MAKE_HOOK_MATCH(StandardLevelDetailView_RefreshContent, &StandardLevelDetailView::RefreshContent, void, StandardLevelDetailView* self) {
-	StandardLevelDetailView_RefreshContent(self);
-	storedBeatmapCharacteristicSO = self->get_selectedDifficultyBeatmap()->get_parentDifficultyBeatmapSet()->get_beatmapCharacteristic();
-}
-MAKE_HOOK_MATCH(MainMenuViewController_DidActivate, &MainMenuViewController::DidActivate, void, MainMenuViewController* self, bool firstActivation, bool addedToHierarchy, bool screenSystemEnabling) {
-	storedBeatmapCharacteristicSO = nullptr;
-	return MainMenuViewController_DidActivate(self, firstActivation, addedToHierarchy, screenSystemEnabling);
-}
-
 /* PC version hooks */
 
 MAKE_HOOK_MATCH(BeatmapDataLoader_GetBeatmapDataFromBeatmapSaveData, &BeatmapDataLoader::GetBeatmapDataFromBeatmapSaveData, BeatmapData*, ::BeatmapSaveDataVersion3::BeatmapSaveData* beatmapSaveData, ::GlobalNamespace::BeatmapDifficulty beatmapDifficulty, float startBpm, bool loadingForDesignatedEnvironment, ::GlobalNamespace::EnvironmentKeywords* environmentKeywords, ::GlobalNamespace::EnvironmentLightGroups* environmentLightGroups, ::GlobalNamespace::DefaultEnvironmentEvents* defaultEnvironmentEvents, ::GlobalNamespace::PlayerSpecificSettings* playerSpecificSettings) {
@@ -357,7 +347,7 @@ MAKE_HOOK_MATCH(BeatmapObjectSpawnMovementData_HighestJumpPosYForLineLayer, &Bea
 }
 
 static inline float SpawnRotationForEventValue(float orig, int index) {
-	if(storedBeatmapCharacteristicSO->requires360Movement && index >= 1000 && index <= 1720)
+	if(index >= 1000 && index <= 1720)
 		return index - 1360;
 	return orig;
 }
@@ -567,7 +557,7 @@ MAKE_HOOK_MATCH(StaticBeatmapObjectSpawnMovementData_LineYPosForLineLayer, &Stat
 
 extern "C" DL_EXPORT void setup(ModInfo& info) {
 	info.id = "MappingExtensions";
-	info.version = "0.21.4";
+	info.version = "0.21.5";
 	modInfo = info;
 	logger = new Logger(modInfo, LoggerOptions(false, true));
 	logger->info("Leaving setup!");
@@ -576,9 +566,6 @@ extern "C" DL_EXPORT void setup(ModInfo& info) {
 extern "C" DL_EXPORT void load() {
 	logger->info("Installing ME Hooks, please wait");
 	il2cpp_functions::Init();
-
-	INSTALL_HOOK(*logger, StandardLevelDetailView_RefreshContent);
-	INSTALL_HOOK(*logger, MainMenuViewController_DidActivate);
 
 	INSTALL_HOOK(*logger, BeatmapDataLoader_GetBeatmapDataFromBeatmapSaveData);
 	INSTALL_HOOK(*logger, BeatmapSaveData_ConvertBeatmapSaveData);
