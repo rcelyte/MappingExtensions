@@ -35,7 +35,6 @@
 #include <GlobalNamespace/BeatmapData.hpp>
 #include <GlobalNamespace/BeatmapDataLoader.hpp>
 #include <GlobalNamespace/BeatmapDataLoader_ObstacleConvertor.hpp>
-#include <GlobalNamespace/BeatmapDataObstaclesMergingTransform.hpp>
 #include <GlobalNamespace/BeatmapDifficulty.hpp>
 #include <GlobalNamespace/BeatmapEventData.hpp>
 #include <GlobalNamespace/BeatmapLineData.hpp>
@@ -48,6 +47,7 @@
 #include <GlobalNamespace/BeatmapObjectSpawnController_InitData.hpp>
 #include <GlobalNamespace/BeatmapObjectSpawnMovementData.hpp>
 #include <GlobalNamespace/FlyingScoreSpawner.hpp>
+#include <GlobalNamespace/GameplayCoreSceneSetupData.hpp>
 #include <GlobalNamespace/IDifficultyBeatmap.hpp>
 #include <GlobalNamespace/IDifficultyBeatmapSet.hpp>
 #include <GlobalNamespace/IJumpOffsetYProvider.hpp>
@@ -83,10 +83,6 @@
 #include <pinkcore/shared/RequirementAPI.hpp>
 #define DL_EXPORT __attribute__((visibility("default")))
 
-using namespace GlobalNamespace;
-using namespace System::Collections;
-
-
 static ModInfo modInfo;
 static Logger *logger = NULL;
 
@@ -105,38 +101,67 @@ static const std::array<const char*, 4> requirementNames = {
 	"Mapping Extensions-More Lanes",
 };
 
-static bool active = false;
-static void CheckRequirements(const std::vector<std::string> &requirements) {
-	logger->info("CheckRequirements()");
-	for(std::string req : requirements)
-		logger->info("    %s", req.c_str());
-	active = std::any_of(requirements.begin(), requirements.end(), [](const std::string &req) {
+namespace SongUtils {
+	namespace CustomData {
+		bool GetInfoJson(GlobalNamespace::IPreviewBeatmapLevel* level, std::shared_ptr<rapidjson::GenericDocument<rapidjson::UTF16<char16_t>>>& doc);
+		bool GetCustomDataJsonFromDifficultyAndCharacteristic(rapidjson::GenericDocument<rapidjson::UTF16<char16_t>>& in, rapidjson::GenericValue<rapidjson::UTF16<char16_t>>& out, GlobalNamespace::BeatmapDifficulty difficulty, GlobalNamespace::BeatmapCharacteristicSO* characteristic);
+		void ExtractRequirements(const rapidjson::GenericValue<rapidjson::UTF16<char16_t>>& requirementsArray, std::vector<std::string>& output);
+	}
+}
+
+static bool ShouldActivate(GlobalNamespace::GameplayCoreSceneSetupData *data) {
+	if(!data || !data->difficultyBeatmap)
+		return false;
+	GlobalNamespace::IDifficultyBeatmapSet *beatmapSet = data->difficultyBeatmap->get_parentDifficultyBeatmapSet();
+	if(!beatmapSet)
+		return false;
+	std::shared_ptr<rapidjson::GenericDocument<rapidjson::UTF16<char16_t>>> info;
+	if(!SongUtils::CustomData::GetInfoJson(data->previewBeatmapLevel, info))
+		return false;
+	rapidjson::GenericValue<rapidjson::UTF16<char16_t>> customData;
+	if(!SongUtils::CustomData::GetCustomDataJsonFromDifficultyAndCharacteristic(*info, customData, data->difficultyBeatmap->get_difficulty(), beatmapSet->get_beatmapCharacteristic()))
+		return false;
+	rapidjson::GenericValue<rapidjson::UTF16<char16_t>>::MemberIterator requirements = customData.FindMember(u"_requirements");
+	if(requirements == customData.MemberEnd())
+		return false;
+	std::vector<std::string> u8requirements;
+	SongUtils::CustomData::ExtractRequirements(requirements->value, u8requirements);
+	return std::any_of(u8requirements.begin(), u8requirements.end(), [](const std::string &req) {
 		return std::any_of(requirementNames.begin(), requirementNames.end(), [req](const char *name) {
 			return req == name;
 		});
 	});
 }
 
+static bool active = false;
+MAKE_HOOK_MATCH(GameplayCoreSceneSetupData_GetTransformedBeatmapDataAsync, &GlobalNamespace::GameplayCoreSceneSetupData::GetTransformedBeatmapDataAsync, System::Threading::Tasks::Task_1<::GlobalNamespace::IReadonlyBeatmapData*>*, GlobalNamespace::GameplayCoreSceneSetupData *self) {
+	active = ShouldActivate(self);
+	logger->info("ShouldActivate(): %hhu", active);
+	return GameplayCoreSceneSetupData_GetTransformedBeatmapDataAsync(self);
+}
+
 /* PC version hooks */
 
-MAKE_HOOK_MATCH(BeatmapDataLoader_GetBeatmapDataFromBeatmapSaveData, &BeatmapDataLoader::GetBeatmapDataFromBeatmapSaveData, BeatmapData*, ::BeatmapSaveDataVersion3::BeatmapSaveData* beatmapSaveData, ::GlobalNamespace::BeatmapDifficulty beatmapDifficulty, float startBpm, bool loadingForDesignatedEnvironment, ::GlobalNamespace::EnvironmentKeywords* environmentKeywords, ::GlobalNamespace::EnvironmentLightGroups* environmentLightGroups, ::GlobalNamespace::DefaultEnvironmentEvents* defaultEnvironmentEvents, ::GlobalNamespace::PlayerSpecificSettings* playerSpecificSettings) {
+MAKE_HOOK_MATCH(BeatmapDataLoader_GetBeatmapDataFromBeatmapSaveData, &GlobalNamespace::BeatmapDataLoader::GetBeatmapDataFromBeatmapSaveData, GlobalNamespace::BeatmapData*, ::BeatmapSaveDataVersion3::BeatmapSaveData* beatmapSaveData, ::GlobalNamespace::BeatmapDifficulty beatmapDifficulty, float startBpm, bool loadingForDesignatedEnvironment, ::GlobalNamespace::EnvironmentKeywords* environmentKeywords, ::GlobalNamespace::EnvironmentLightGroups* environmentLightGroups, ::GlobalNamespace::DefaultEnvironmentEvents* defaultEnvironmentEvents, ::GlobalNamespace::PlayerSpecificSettings* playerSpecificSettings) {
 	System::Collections::Generic::List_1<::BeatmapSaveDataVersion3::BeatmapSaveData::ColorNoteData*> *notes = beatmapSaveData->colorNotes;
 	System::Collections::Generic::List_1<::BeatmapSaveDataVersion3::BeatmapSaveData::BombNoteData*> *bombs = beatmapSaveData->bombNotes;
 	System::Collections::Generic::List_1<BeatmapSaveDataVersion3::BeatmapSaveData::ObstacleData*> *obstacles = beatmapSaveData->obstacles;
 	System::Collections::Generic::List_1<::BeatmapSaveDataVersion3::BeatmapSaveData::SliderData*> *sliders = beatmapSaveData->sliders;
 	System::Collections::Generic::List_1<::BeatmapSaveDataVersion3::BeatmapSaveData::BurstSliderData*> *bursts = beatmapSaveData->burstSliders;
 	System::Collections::Generic::List_1<BeatmapSaveDataVersion3::BeatmapSaveData::WaypointData*> *waypoints = beatmapSaveData->waypoints;
-	notes->Sort(); bombs->Sort(); obstacles->Sort(); sliders->Sort(); bursts->Sort(); waypoints->Sort();
-	BeatmapData *result = BeatmapDataLoader_GetBeatmapDataFromBeatmapSaveData(beatmapSaveData, beatmapDifficulty, startBpm, loadingForDesignatedEnvironment, environmentKeywords, environmentLightGroups, defaultEnvironmentEvents, playerSpecificSettings);
+	// notes->Sort(); bombs->Sort(); obstacles->Sort(); sliders->Sort(); bursts->Sort(); waypoints->Sort();
+	GlobalNamespace::BeatmapData *result = BeatmapDataLoader_GetBeatmapDataFromBeatmapSaveData(beatmapSaveData, beatmapDifficulty, startBpm, loadingForDesignatedEnvironment, environmentKeywords, environmentLightGroups, defaultEnvironmentEvents, playerSpecificSettings);
+	if(!active)
+		return result;
 
 	uint32_t noteIndex = 0, bombIndex = 0, obstacleIndex = 0, sliderIndex = 0, burstIndex = 0, waypointIndex = 0;
 	logger->info("Restoring %u notes, %u bombs, %u obstacles, %u sliders, %u burst sliders, and %u waypoints", notes->get_Count(), bombs->get_Count(), obstacles->get_Count(), sliders->get_Count(), bursts->get_Count(), waypoints->get_Count());
-	for(System::Collections::Generic::LinkedListNode_1<BeatmapDataItem*> *iter = result->get_allBeatmapDataItems()->head, *end = iter ? iter->prev : NULL; iter; iter = iter->next) {
-		BeatmapDataItem *item = iter->item;
-		if(NoteData *data = il2cpp_utils::try_cast<NoteData>(item).value_or(nullptr); data) {
+	for(System::Collections::Generic::LinkedListNode_1<GlobalNamespace::BeatmapDataItem*> *iter = result->get_allBeatmapDataItems()->head, *end = iter ? iter->prev : NULL; iter; iter = iter->next) {
+		GlobalNamespace::BeatmapDataItem *item = iter->item;
+		if(GlobalNamespace::NoteData *data = il2cpp_utils::try_cast<GlobalNamespace::NoteData>(item).value_or(nullptr); data) {
 			System::Collections::Generic::IReadOnlyList_1<BeatmapSaveDataVersion3::BeatmapSaveData::BeatmapSaveDataItem*> *source = (System::Collections::Generic::IReadOnlyList_1<BeatmapSaveDataVersion3::BeatmapSaveData::BeatmapSaveDataItem*>*)notes;
 			uint32_t *sourceIndex = &noteIndex;
-			if(data->gameplayType == NoteData::GameplayType::Bomb)
+			if(data->gameplayType == GlobalNamespace::NoteData::GameplayType::Bomb)
 				source = (System::Collections::Generic::IReadOnlyList_1<BeatmapSaveDataVersion3::BeatmapSaveData::BeatmapSaveDataItem*>*)bombs, sourceIndex = &bombIndex;
 			if(*sourceIndex >= ((System::Collections::Generic::IReadOnlyCollection_1<BeatmapSaveDataVersion3::BeatmapSaveData::BeatmapSaveDataItem*>*)source)->get_Count()) {
 				logger->warning("Failed to restore line layer for NoteData (%s)", ((void*)source == (void*)notes) ? "Color" : "Bomb");
@@ -152,7 +177,7 @@ MAKE_HOOK_MATCH(BeatmapDataLoader_GetBeatmapDataFromBeatmapSaveData, &BeatmapDat
 				logger->error("Failed to cast note data");
 			/*if(data->noteLineLayer != oldLayer)
 				logger->info("    NoteData restore %d -> %d", (int)oldLayer, (int)data->noteLineLayer);*/
-		} else if(ObstacleData *data = il2cpp_utils::try_cast<ObstacleData>(item).value_or(nullptr); data) {
+		} else if(GlobalNamespace::ObstacleData *data = il2cpp_utils::try_cast<GlobalNamespace::ObstacleData>(item).value_or(nullptr); data) {
 			if(obstacleIndex >= obstacles->get_Count()) {
 				logger->warning("Failed to restore line layer for ObstacleData");
 				goto next;
@@ -166,10 +191,10 @@ MAKE_HOOK_MATCH(BeatmapDataLoader_GetBeatmapDataFromBeatmapSaveData, &BeatmapDat
 			data->lineLayer = saveData->get_layer();
 			/*if(data->lineLayer != oldLayer)
 				logger->info("    ObstacleData restore %d -> %d", (int)oldLayer, (int)data->lineLayer);*/
-		} else if(SliderData *data = il2cpp_utils::try_cast<SliderData>(item).value_or(nullptr); data) {
+		} else if(GlobalNamespace::SliderData *data = il2cpp_utils::try_cast<GlobalNamespace::SliderData>(item).value_or(nullptr); data) {
 			System::Collections::Generic::IReadOnlyList_1<BeatmapSaveDataVersion3::BeatmapSaveData::BaseSliderData*> *source = (System::Collections::Generic::IReadOnlyList_1<BeatmapSaveDataVersion3::BeatmapSaveData::BaseSliderData*>*)sliders;
 			uint32_t *sourceIndex = &sliderIndex;
-			if(data->sliderType == SliderData::Type::Burst)
+			if(data->sliderType == GlobalNamespace::SliderData::Type::Burst)
 				source = (System::Collections::Generic::IReadOnlyList_1<BeatmapSaveDataVersion3::BeatmapSaveData::BaseSliderData*>*)bursts, sourceIndex = &burstIndex;
 			if(*sourceIndex >= ((System::Collections::Generic::IReadOnlyCollection_1<BeatmapSaveDataVersion3::BeatmapSaveData::BaseSliderData*>*)source)->get_Count()) {
 				logger->warning("Failed to restore line layers for SliderData (%s)", ((void*)source == (void*)sliders) ? "Normal" : "Burst");
@@ -181,7 +206,7 @@ MAKE_HOOK_MATCH(BeatmapDataLoader_GetBeatmapDataFromBeatmapSaveData, &BeatmapDat
 			data->tailBeforeJumpLineLayer = data->tailLineLayer = saveData->get_tailLayer();
 			/*if(data->headLineLayer != oldLayers[0] || data->tailLineLayer != oldLayers[1])
 				logger->info("    SliderData restore (%d, %d) -> (%d, %d)", (int)oldLayers[0], (int)oldLayers[1], (int)data->headLineLayer, (int)data->tailLineLayer);*/
-		} else if(WaypointData *data = il2cpp_utils::try_cast<WaypointData>(item).value_or(nullptr); data) {
+		} else if(GlobalNamespace::WaypointData *data = il2cpp_utils::try_cast<GlobalNamespace::WaypointData>(item).value_or(nullptr); data) {
 			if(waypointIndex >= waypoints->get_Count()) {
 				logger->warning("Failed to restore line layer for WaypointData");
 				goto next;
@@ -205,71 +230,55 @@ MAKE_HOOK_MATCH(BeatmapDataLoader_GetBeatmapDataFromBeatmapSaveData, &BeatmapDat
 	return result;
 }
 
-static std::vector<int32_t> lineIndexes; // TODO: should we worry about RAM here?
-
-static inline bool SliderHeadPositionOverlapsWithNote(SliderData *slider, NoteData *note) {
+static inline bool SliderHeadPositionOverlapsWithNote(GlobalNamespace::SliderData *slider, GlobalNamespace::NoteData *note) {
 	return slider->headLineIndex == note->lineIndex && slider->headLineLayer == note->noteLineLayer;
 }
-static inline bool SliderTailPositionOverlapsWithNote(SliderData *slider, NoteData *note) {
+static inline bool SliderTailPositionOverlapsWithNote(GlobalNamespace::SliderData *slider, GlobalNamespace::NoteData *note) {
 	return slider->tailLineIndex == note->lineIndex && slider->tailLineLayer == note->noteLineLayer;
 }
-MAKE_HOOK_MATCH(BeatmapObjectsInTimeRowProcessor_HandleCurrentTimeSliceAllNotesAndSlidersDidFinishTimeSlice, &BeatmapObjectsInTimeRowProcessor::HandleCurrentTimeSliceAllNotesAndSlidersDidFinishTimeSlice, void, BeatmapObjectsInTimeRowProcessor *self, ::GlobalNamespace::BeatmapObjectsInTimeRowProcessor::TimeSliceContainer_1<::GlobalNamespace::BeatmapDataItem*>* allObjectsTimeSlice, float nextTimeSliceTime) {
-	/*if(!active)
-		return BeatmapObjectsInTimeRowProcessor_HandleCurrentTimeSliceAllNotesAndSlidersDidFinishTimeSlice(self, allObjectsTimeSlice, nextTimeSliceTime);*/
-	lineIndexes.clear();
-	System::Collections::Generic::IReadOnlyList_1<BeatmapDataItem*> *items = allObjectsTimeSlice->get_items();
-	uint32_t itemCount = ((System::Collections::Generic::IReadOnlyCollection_1<BeatmapDataItem*>*)items)->get_Count();
-	for(uint32_t i = 0; i < itemCount; ++i) {
-		NoteData *note = il2cpp_utils::try_cast<NoteData>(items->get_Item(i)).value_or(nullptr);
-		if(!note)
-			continue;
-		// logger->info("CLAMP %u", i);
-		lineIndexes.push_back(note->lineIndex);
-		note->lineIndex = std::clamp(note->lineIndex, 0, 3);
-	}
+MAKE_HOOK_MATCH(BeatmapObjectsInTimeRowProcessor_HandleCurrentTimeSliceAllNotesAndSlidersDidFinishTimeSlice, &GlobalNamespace::BeatmapObjectsInTimeRowProcessor::HandleCurrentTimeSliceAllNotesAndSlidersDidFinishTimeSlice, void, GlobalNamespace::BeatmapObjectsInTimeRowProcessor *self, ::GlobalNamespace::BeatmapObjectsInTimeRowProcessor::TimeSliceContainer_1<::GlobalNamespace::BeatmapDataItem*>* allObjectsTimeSlice, float nextTimeSliceTime) {
 	BeatmapObjectsInTimeRowProcessor_HandleCurrentTimeSliceAllNotesAndSlidersDidFinishTimeSlice(self, allObjectsTimeSlice, nextTimeSliceTime);
-	/*IEnumerable<NoteData> enumerable = allObjectsTimeSlice.OfType<NoteData>();
-	IEnumerable<SliderData> enumerable2 = allObjectsTimeSlice.OfType<SliderData>();
-	IEnumerable<BeatmapObjectsInTimeRowProcessor.SliderTailData> enumerable3 = allObjectsTimeSlice.OfType<BeatmapObjectsInTimeRowProcessor.SliderTailData>();
-	if(!enumerable.Any(x => x.lineIndex > 3 || x.lineIndex < 0))
-		return;*/
-	std::unordered_map<int32_t, std::vector<NoteData*>> notesInColumnsReusableProcessingDictionaryOfLists;
-	for(uint32_t i = 0, currentNote = 0; i < itemCount; ++i) {
-		NoteData *note = il2cpp_utils::try_cast<NoteData>(items->get_Item(i)).value_or(nullptr);
+	if(!active)
+		return;
+	System::Collections::Generic::IReadOnlyList_1<GlobalNamespace::BeatmapDataItem*> *items = allObjectsTimeSlice->get_items();
+	uint32_t itemCount = ((System::Collections::Generic::IReadOnlyCollection_1<GlobalNamespace::BeatmapDataItem*>*)items)->get_Count();
+
+	std::unordered_map<int32_t, std::vector<GlobalNamespace::NoteData*>> notesInColumnsReusableProcessingDictionaryOfLists;
+	for(uint32_t i = 0; i < itemCount; ++i) {
+		GlobalNamespace::NoteData *note = il2cpp_utils::try_cast<GlobalNamespace::NoteData>(items->get_Item(i)).value_or(nullptr);
 		if(!note)
 			continue;
-		note->lineIndex = lineIndexes[currentNote++];
-		std::vector<NoteData*> *list = &notesInColumnsReusableProcessingDictionaryOfLists.try_emplace(note->lineIndex).first->second;
-		NoteLineLayer lineLayer = note->noteLineLayer;
-		std::vector<NoteData*>::const_iterator pos = std::find_if(list->begin(), list->end(), [lineLayer](NoteData *e) {
+		std::vector<GlobalNamespace::NoteData*> *list = &notesInColumnsReusableProcessingDictionaryOfLists.try_emplace(note->lineIndex).first->second;
+		GlobalNamespace::NoteLineLayer lineLayer = note->noteLineLayer;
+		std::vector<GlobalNamespace::NoteData*>::const_iterator pos = std::find_if(list->begin(), list->end(), [lineLayer](GlobalNamespace::NoteData *e) {
 			return e->noteLineLayer > lineLayer;
 		});
 		list->insert(pos, note);
 	}
-	for(std::pair<const int, std::vector<NoteData*>> &list : notesInColumnsReusableProcessingDictionaryOfLists)
+	for(std::pair<const int, std::vector<GlobalNamespace::NoteData*>> &list : notesInColumnsReusableProcessingDictionaryOfLists)
 		for(int i = 0; i < list.second.size(); ++i)
 			list.second[i]->SetBeforeJumpNoteLineLayer(i);
 	for(uint32_t i = 0; i < itemCount; ++i) {
-		SliderData *slider = il2cpp_utils::try_cast<SliderData>(items->get_Item(i)).value_or(nullptr);
+		GlobalNamespace::SliderData *slider = il2cpp_utils::try_cast<GlobalNamespace::SliderData>(items->get_Item(i)).value_or(nullptr);
 		if(!slider)
 			continue;
 		for(uint32_t j = 0; j < itemCount; ++j) {
-			NoteData *note = il2cpp_utils::try_cast<NoteData>(items->get_Item(j)).value_or(nullptr);
+			GlobalNamespace::NoteData *note = il2cpp_utils::try_cast<GlobalNamespace::NoteData>(items->get_Item(j)).value_or(nullptr);
 			if(!note)
 				continue;
 			if(!SliderHeadPositionOverlapsWithNote(slider, note))
 				continue;
 			slider->SetHasHeadNote(true);
 			slider->SetHeadBeforeJumpLineLayer(note->beforeJumpNoteLineLayer);
-			if(slider->sliderType != SliderData::Type::Burst) {
+			if(slider->sliderType != GlobalNamespace::SliderData::Type::Burst) {
 				note->ChangeToSliderHead();
 				continue;
 			}
 			note->ChangeToBurstSliderHead();
 			if(note->cutDirection != slider->tailCutDirection)
 				continue;
-			UnityEngine::Vector2 line = StaticBeatmapObjectSpawnMovementData::Get2DNoteOffset(note->lineIndex, self->numberOfLines, note->noteLineLayer) - StaticBeatmapObjectSpawnMovementData::Get2DNoteOffset(slider->tailLineIndex, self->numberOfLines, slider->tailLineLayer);
-			float num = Vector2Extensions::SignedAngleToLine(NoteCutDirectionExtensions::Direction(note->cutDirection), line);
+			UnityEngine::Vector2 line = GlobalNamespace::StaticBeatmapObjectSpawnMovementData::Get2DNoteOffset(note->lineIndex, self->numberOfLines, note->noteLineLayer) - GlobalNamespace::StaticBeatmapObjectSpawnMovementData::Get2DNoteOffset(slider->tailLineIndex, self->numberOfLines, slider->tailLineLayer);
+			float num = GlobalNamespace::Vector2Extensions::SignedAngleToLine(GlobalNamespace::NoteCutDirectionExtensions::Direction(note->cutDirection), line);
 			if(abs(num) > 40)
 				continue;
 			note->SetCutDirectionAngleOffset(num);
@@ -277,12 +286,12 @@ MAKE_HOOK_MATCH(BeatmapObjectsInTimeRowProcessor_HandleCurrentTimeSliceAllNotesA
 		}
 	}
 	for(uint32_t i = 0; i < itemCount; ++i) {
-		BeatmapObjectsInTimeRowProcessor::SliderTailData *tailData = il2cpp_utils::try_cast<BeatmapObjectsInTimeRowProcessor::SliderTailData>(items->get_Item(i)).value_or(nullptr);
+		GlobalNamespace::BeatmapObjectsInTimeRowProcessor::SliderTailData *tailData = il2cpp_utils::try_cast<GlobalNamespace::BeatmapObjectsInTimeRowProcessor::SliderTailData>(items->get_Item(i)).value_or(nullptr);
 		if(!tailData)
 			continue;
-		SliderData *slider = tailData->slider;
+		GlobalNamespace::SliderData *slider = tailData->slider;
 		for(uint32_t j = 0; j < itemCount; ++j) {
-			NoteData *note = il2cpp_utils::try_cast<NoteData>(items->get_Item(j)).value_or(nullptr);
+			GlobalNamespace::NoteData *note = il2cpp_utils::try_cast<GlobalNamespace::NoteData>(items->get_Item(j)).value_or(nullptr);
 			if(!note)
 				continue;
 			if(!SliderTailPositionOverlapsWithNote(slider, note))
@@ -294,7 +303,7 @@ MAKE_HOOK_MATCH(BeatmapObjectsInTimeRowProcessor_HandleCurrentTimeSliceAllNotesA
 	}
 }
 
-MAKE_HOOK_MATCH(BeatmapObjectSpawnMovementData_GetNoteOffset, &BeatmapObjectSpawnMovementData::GetNoteOffset, UnityEngine::Vector3, BeatmapObjectSpawnMovementData* self, int noteLineIndex, GlobalNamespace::NoteLineLayer noteLineLayer) {
+MAKE_HOOK_MATCH(BeatmapObjectSpawnMovementData_GetNoteOffset, &GlobalNamespace::BeatmapObjectSpawnMovementData::GetNoteOffset, UnityEngine::Vector3, GlobalNamespace::BeatmapObjectSpawnMovementData* self, int noteLineIndex, GlobalNamespace::NoteLineLayer noteLineLayer) {
 	UnityEngine::Vector3 result = BeatmapObjectSpawnMovementData_GetNoteOffset(self, noteLineIndex, noteLineLayer);
 	if(!active)
 		return result;
@@ -303,11 +312,11 @@ MAKE_HOOK_MATCH(BeatmapObjectSpawnMovementData_GetNoteOffset, &BeatmapObjectSpaw
 	else if(noteLineIndex < 1000)
 		return result;
 	float num = -(self->noteLinesCount - 1) * .5f;
-	num += noteLineIndex * (StaticBeatmapObjectSpawnMovementData::kNoteLinesDistance / 1000.f);
-	return Sombrero::FastVector3(self->rightVec) * num + Sombrero::FastVector3(0, StaticBeatmapObjectSpawnMovementData::LineYPosForLineLayer(noteLineLayer), 0);
+	num += noteLineIndex * (GlobalNamespace::StaticBeatmapObjectSpawnMovementData::kNoteLinesDistance / 1000.f);
+	return Sombrero::FastVector3(self->rightVec) * num + Sombrero::FastVector3(0, GlobalNamespace::StaticBeatmapObjectSpawnMovementData::LineYPosForLineLayer(noteLineLayer), 0);
 }
 
-MAKE_HOOK_MATCH(BeatmapObjectSpawnMovementData_Get2DNoteOffset, &BeatmapObjectSpawnMovementData::Get2DNoteOffset, UnityEngine::Vector2, BeatmapObjectSpawnMovementData* self, int noteLineIndex, GlobalNamespace::NoteLineLayer noteLineLayer) {
+MAKE_HOOK_MATCH(BeatmapObjectSpawnMovementData_Get2DNoteOffset, &GlobalNamespace::BeatmapObjectSpawnMovementData::Get2DNoteOffset, UnityEngine::Vector2, GlobalNamespace::BeatmapObjectSpawnMovementData* self, int noteLineIndex, GlobalNamespace::NoteLineLayer noteLineLayer) {
 	UnityEngine::Vector2 result = BeatmapObjectSpawnMovementData_Get2DNoteOffset(self, noteLineIndex, noteLineLayer);
 	if(!active)
 		return result;
@@ -316,12 +325,12 @@ MAKE_HOOK_MATCH(BeatmapObjectSpawnMovementData_Get2DNoteOffset, &BeatmapObjectSp
 	else if(noteLineIndex < 1000)
 		return result;
 	float num = -(self->noteLinesCount - 1) * .5f;
-	float x = num + noteLineIndex * (StaticBeatmapObjectSpawnMovementData::kNoteLinesDistance / 1000.f);
-	float y = StaticBeatmapObjectSpawnMovementData::LineYPosForLineLayer(noteLineLayer);
+	float x = num + noteLineIndex * (GlobalNamespace::StaticBeatmapObjectSpawnMovementData::kNoteLinesDistance / 1000.f);
+	float y = GlobalNamespace::StaticBeatmapObjectSpawnMovementData::LineYPosForLineLayer(noteLineLayer);
 	return UnityEngine::Vector2(x, y);
 }
 
-MAKE_HOOK_MATCH(BeatmapObjectSpawnMovementData_GetObstacleOffset, &BeatmapObjectSpawnMovementData::GetObstacleOffset, UnityEngine::Vector3, BeatmapObjectSpawnMovementData *self, int noteLineIndex, ::GlobalNamespace::NoteLineLayer noteLineLayer) {
+MAKE_HOOK_MATCH(BeatmapObjectSpawnMovementData_GetObstacleOffset, &GlobalNamespace::BeatmapObjectSpawnMovementData::GetObstacleOffset, UnityEngine::Vector3, GlobalNamespace::BeatmapObjectSpawnMovementData *self, int noteLineIndex, ::GlobalNamespace::NoteLineLayer noteLineLayer) {
 	UnityEngine::Vector3 result = BeatmapObjectSpawnMovementData_GetObstacleOffset(self, noteLineIndex, noteLineLayer);
 	if(!active)
 		return result;
@@ -330,11 +339,11 @@ MAKE_HOOK_MATCH(BeatmapObjectSpawnMovementData_GetObstacleOffset, &BeatmapObject
 	else if(noteLineIndex < 1000)
 		return result;
 	float num = -(self->noteLinesCount - 1) * .5f;
-	num += noteLineIndex * (StaticBeatmapObjectSpawnMovementData::kNoteLinesDistance / 1000.f);
-	return Sombrero::FastVector3(self->rightVec) * num + Sombrero::FastVector3(0, StaticBeatmapObjectSpawnMovementData::LineYPosForLineLayer(noteLineLayer) + StaticBeatmapObjectSpawnMovementData::kObstacleVerticalOffset, 0);
+	num += noteLineIndex * (GlobalNamespace::StaticBeatmapObjectSpawnMovementData::kNoteLinesDistance / 1000.f);
+	return Sombrero::FastVector3(self->rightVec) * num + Sombrero::FastVector3(0, GlobalNamespace::StaticBeatmapObjectSpawnMovementData::LineYPosForLineLayer(noteLineLayer) + GlobalNamespace::StaticBeatmapObjectSpawnMovementData::kObstacleVerticalOffset, 0);
 }
 
-MAKE_HOOK_MATCH(BeatmapObjectSpawnMovementData_HighestJumpPosYForLineLayer, &BeatmapObjectSpawnMovementData::HighestJumpPosYForLineLayer, float, BeatmapObjectSpawnMovementData* self, NoteLineLayer lineLayer) {
+MAKE_HOOK_MATCH(BeatmapObjectSpawnMovementData_HighestJumpPosYForLineLayer, &GlobalNamespace::BeatmapObjectSpawnMovementData::HighestJumpPosYForLineLayer, float, GlobalNamespace::BeatmapObjectSpawnMovementData* self, GlobalNamespace::NoteLineLayer lineLayer) {
 	float result = BeatmapObjectSpawnMovementData_HighestJumpPosYForLineLayer(self, lineLayer);
 	if(!active)
 		return result;
@@ -392,13 +401,13 @@ MAKE_HOOK_MATCH(BeatmapSaveData_ConvertBeatmapSaveData, &BeatmapSaveDataVersion3
 	return result;
 }
 
-MAKE_HOOK_MATCH(NoteBasicCutInfoHelper_GetBasicCutInfo, &NoteBasicCutInfoHelper::GetBasicCutInfo, void, ::UnityEngine::Transform* noteTransform, ::GlobalNamespace::ColorType colorType, ::GlobalNamespace::NoteCutDirection cutDirection, ::GlobalNamespace::SaberType saberType, float saberBladeSpeed, ::UnityEngine::Vector3 cutDirVec, float cutAngleTolerance, ByRef<bool> directionOK, ByRef<bool> speedOK, ByRef<bool> saberTypeOK, ByRef<float> cutDirDeviation, ByRef<float> cutDirAngle) {
+MAKE_HOOK_MATCH(NoteBasicCutInfoHelper_GetBasicCutInfo, &GlobalNamespace::NoteBasicCutInfoHelper::GetBasicCutInfo, void, ::UnityEngine::Transform* noteTransform, ::GlobalNamespace::ColorType colorType, ::GlobalNamespace::NoteCutDirection cutDirection, ::GlobalNamespace::SaberType saberType, float saberBladeSpeed, ::UnityEngine::Vector3 cutDirVec, float cutAngleTolerance, ByRef<bool> directionOK, ByRef<bool> speedOK, ByRef<bool> saberTypeOK, ByRef<float> cutDirDeviation, ByRef<float> cutDirAngle) {
 	if(active && cutDirection >= 2000 && cutDirection <= 2360)
-		cutDirection = NoteCutDirection::Any;
+		cutDirection = GlobalNamespace::NoteCutDirection::Any;
 	NoteBasicCutInfoHelper_GetBasicCutInfo(noteTransform, colorType, cutDirection, saberType, saberBladeSpeed, cutDirVec, cutAngleTolerance, directionOK, speedOK, saberTypeOK, cutDirDeviation, cutDirAngle);
 }
 
-MAKE_HOOK_MATCH(NoteCutDirectionExtensions_Rotation, &NoteCutDirectionExtensions::Rotation, UnityEngine::Quaternion, NoteCutDirection cutDirection, float offset) {
+MAKE_HOOK_MATCH(NoteCutDirectionExtensions_Rotation, &GlobalNamespace::NoteCutDirectionExtensions::Rotation, UnityEngine::Quaternion, GlobalNamespace::NoteCutDirection cutDirection, float offset) {
 	UnityEngine::Quaternion result = NoteCutDirectionExtensions_Rotation(cutDirection, offset);
 	if(!active)
 		return result;
@@ -412,7 +421,7 @@ MAKE_HOOK_MATCH(NoteCutDirectionExtensions_Rotation, &NoteCutDirectionExtensions
 	return result;
 }
 
-MAKE_HOOK_MATCH(NoteCutDirectionExtensions_Direction, &NoteCutDirectionExtensions::Direction, UnityEngine::Vector2, NoteCutDirection cutDirection) {
+MAKE_HOOK_MATCH(NoteCutDirectionExtensions_Direction, &GlobalNamespace::NoteCutDirectionExtensions::Direction, UnityEngine::Vector2, GlobalNamespace::NoteCutDirection cutDirection) {
 	UnityEngine::Vector2 result = NoteCutDirectionExtensions_Direction(cutDirection);
 	if(!active)
 		return result;
@@ -427,7 +436,7 @@ MAKE_HOOK_MATCH(NoteCutDirectionExtensions_Direction, &NoteCutDirectionExtension
 	return UnityEngine::Vector2(dir.x, dir.y);
 }
 
-MAKE_HOOK_MATCH(NoteCutDirectionExtensions_RotationAngle, &NoteCutDirectionExtensions::RotationAngle, float, NoteCutDirection cutDirection) {
+MAKE_HOOK_MATCH(NoteCutDirectionExtensions_RotationAngle, &GlobalNamespace::NoteCutDirectionExtensions::RotationAngle, float, GlobalNamespace::NoteCutDirection cutDirection) {
 	float result = NoteCutDirectionExtensions_RotationAngle(cutDirection);
 	if(!active)
 		return result;
@@ -438,8 +447,8 @@ MAKE_HOOK_MATCH(NoteCutDirectionExtensions_RotationAngle, &NoteCutDirectionExten
 	return result;
 }
 
-MAKE_HOOK_MATCH(NoteCutDirectionExtensions_Mirrored, &NoteCutDirectionExtensions::Mirrored, NoteCutDirection, NoteCutDirection cutDirection) {
-	NoteCutDirection result = NoteCutDirectionExtensions_Mirrored(cutDirection);
+MAKE_HOOK_MATCH(NoteCutDirectionExtensions_Mirrored, &GlobalNamespace::NoteCutDirectionExtensions::Mirrored, GlobalNamespace::NoteCutDirection, GlobalNamespace::NoteCutDirection cutDirection) {
+	GlobalNamespace::NoteCutDirection result = NoteCutDirectionExtensions_Mirrored(cutDirection);
 	if(!active)
 		return result;
 	if(cutDirection >= 1000 && cutDirection <= 1360)
@@ -461,7 +470,7 @@ static inline bool MirrorPrecisionLineIndex(int32_t *lineIndex) {
 	return false;
 }
 
-MAKE_HOOK_MATCH(NoteData_Mirror, &NoteData::Mirror, void, NoteData* self, int lineCount) {
+MAKE_HOOK_MATCH(NoteData_Mirror, &GlobalNamespace::NoteData::Mirror, void, GlobalNamespace::NoteData* self, int lineCount) {
 	int32_t lineIndex = self->lineIndex;
 	int32_t flipLineIndex = self->flipLineIndex;
 	NoteData_Mirror(self, lineCount);
@@ -473,15 +482,15 @@ MAKE_HOOK_MATCH(NoteData_Mirror, &NoteData::Mirror, void, NoteData* self, int li
 		self->set_flipLineIndex(flipLineIndex);
 }
 
-MAKE_HOOK_MATCH(ObstacleController_Init, &ObstacleController::Init, void, ObstacleController* self, ObstacleData* obstacleData, float worldRotation, UnityEngine::Vector3 startPos, UnityEngine::Vector3 midPos, UnityEngine::Vector3 endPos, float move1Duration, float move2Duration, float singleLineWidth, float height) {
+MAKE_HOOK_MATCH(ObstacleController_Init, &GlobalNamespace::ObstacleController::Init, void, GlobalNamespace::ObstacleController* self, GlobalNamespace::ObstacleData* obstacleData, float worldRotation, UnityEngine::Vector3 startPos, UnityEngine::Vector3 midPos, UnityEngine::Vector3 endPos, float move1Duration, float move2Duration, float singleLineWidth, float height) {
 	if(!active)
 		return ObstacleController_Init(self, obstacleData, worldRotation, startPos, midPos, endPos, move1Duration, move2Duration, singleLineWidth, height);
 	if(obstacleData->height <= -1000)
-		height = (obstacleData->height + 2000) / 1000.f * StaticBeatmapObjectSpawnMovementData::kNoteLinesDistance;
+		height = (obstacleData->height + 2000) / 1000.f * GlobalNamespace::StaticBeatmapObjectSpawnMovementData::kNoteLinesDistance;
 	else if(obstacleData->height >= 1000)
-		height = (obstacleData->height - 1000) / 1000.f * StaticBeatmapObjectSpawnMovementData::kNoteLinesDistance;
+		height = (obstacleData->height - 1000) / 1000.f * GlobalNamespace::StaticBeatmapObjectSpawnMovementData::kNoteLinesDistance;
 	else if(obstacleData->height > 2)
-		height = obstacleData->height * StaticBeatmapObjectSpawnMovementData::kNoteLinesDistance;
+		height = obstacleData->height * GlobalNamespace::StaticBeatmapObjectSpawnMovementData::kNoteLinesDistance;
 
 	int32_t oldWidth = obstacleData->width;
 	if(oldWidth <= -1000)
@@ -498,7 +507,7 @@ MAKE_HOOK_MATCH(ObstacleController_Init, &ObstacleController::Init, void, Obstac
 	obstacleData->width = oldWidth;
 }
 
-MAKE_HOOK_MATCH(ObstacleData_Mirror, &ObstacleData::Mirror, void, ObstacleData* self, int lineCount) {
+MAKE_HOOK_MATCH(ObstacleData_Mirror, &GlobalNamespace::ObstacleData::Mirror, void, GlobalNamespace::ObstacleData* self, int lineCount) {
 	int32_t lineIndex = self->lineIndex;
 	ObstacleData_Mirror(self, lineCount);
 	if(!active)
@@ -514,7 +523,7 @@ MAKE_HOOK_MATCH(ObstacleData_Mirror, &ObstacleData::Mirror, void, ObstacleData* 
 	}
 }
 
-MAKE_HOOK_MATCH(SliderData_Mirror, &SliderData::Mirror, void, SliderData *self, int lineCount) {
+MAKE_HOOK_MATCH(SliderData_Mirror, &GlobalNamespace::SliderData::Mirror, void, GlobalNamespace::SliderData *self, int lineCount) {
 	int32_t headLineIndex = self->headLineIndex;
 	int32_t tailLineIndex = self->tailLineIndex;
 	SliderData_Mirror(self, lineCount);
@@ -526,7 +535,7 @@ MAKE_HOOK_MATCH(SliderData_Mirror, &SliderData::Mirror, void, SliderData *self, 
 		self->tailLineIndex = tailLineIndex;
 }
 
-MAKE_HOOK_MATCH(SliderMeshController_CutDirectionToControlPointPosition, &SliderMeshController::CutDirectionToControlPointPosition, UnityEngine::Vector3, NoteCutDirection noteCutDirection) {
+MAKE_HOOK_MATCH(SliderMeshController_CutDirectionToControlPointPosition, &GlobalNamespace::SliderMeshController::CutDirectionToControlPointPosition, UnityEngine::Vector3, GlobalNamespace::NoteCutDirection noteCutDirection) {
 	UnityEngine::Vector3 result = SliderMeshController_CutDirectionToControlPointPosition(noteCutDirection);
 	if(!active)
 		return result;
@@ -543,21 +552,21 @@ MAKE_HOOK_MATCH(SliderMeshController_CutDirectionToControlPointPosition, &Slider
 	return result;
 }
 
-MAKE_HOOK_MATCH(StaticBeatmapObjectSpawnMovementData_LineYPosForLineLayer, &StaticBeatmapObjectSpawnMovementData::LineYPosForLineLayer, float, NoteLineLayer lineLayer) {
+MAKE_HOOK_MATCH(StaticBeatmapObjectSpawnMovementData_LineYPosForLineLayer, &GlobalNamespace::StaticBeatmapObjectSpawnMovementData::LineYPosForLineLayer, float, GlobalNamespace::NoteLineLayer lineLayer) {
 	float result = StaticBeatmapObjectSpawnMovementData_LineYPosForLineLayer(lineLayer);
 	if(!active)
 		return result;
-	constexpr float delta = StaticBeatmapObjectSpawnMovementData::kTopLinesYPos - StaticBeatmapObjectSpawnMovementData::kUpperLinesYPos;
+	constexpr float delta = GlobalNamespace::StaticBeatmapObjectSpawnMovementData::kTopLinesYPos - GlobalNamespace::StaticBeatmapObjectSpawnMovementData::kUpperLinesYPos;
 	if(lineLayer >= 1000 || lineLayer <= -1000)
-		return StaticBeatmapObjectSpawnMovementData::kUpperLinesYPos - delta - delta + lineLayer * (delta / 1000.f);
+		return GlobalNamespace::StaticBeatmapObjectSpawnMovementData::kUpperLinesYPos - delta - delta + lineLayer * (delta / 1000.f);
 	if(lineLayer > 2 || lineLayer < 0)
-		return StaticBeatmapObjectSpawnMovementData::kUpperLinesYPos - delta + lineLayer * delta;
+		return GlobalNamespace::StaticBeatmapObjectSpawnMovementData::kUpperLinesYPos - delta + lineLayer * delta;
 	return result;
 }
 
 extern "C" DL_EXPORT void setup(ModInfo& info) {
 	info.id = "MappingExtensions";
-	info.version = "0.21.5";
+	info.version = "0.22.0";
 	modInfo = info;
 	logger = new Logger(modInfo, LoggerOptions(false, true));
 	logger->info("Leaving setup!");
@@ -567,6 +576,7 @@ extern "C" DL_EXPORT void load() {
 	logger->info("Installing ME Hooks, please wait");
 	il2cpp_functions::Init();
 
+	INSTALL_HOOK(*logger, GameplayCoreSceneSetupData_GetTransformedBeatmapDataAsync);
 	INSTALL_HOOK(*logger, BeatmapDataLoader_GetBeatmapDataFromBeatmapSaveData);
 	INSTALL_HOOK(*logger, BeatmapSaveData_ConvertBeatmapSaveData);
 
@@ -591,5 +601,4 @@ extern "C" DL_EXPORT void load() {
 	logger->info("Installed ME Hooks successfully!");
 	for(const char *name : requirementNames)
 		PinkCore::RequirementAPI::RegisterInstalled(name);
-	PinkCore::API::GetFoundRequirementCallbackSafe() += CheckRequirements;
 }

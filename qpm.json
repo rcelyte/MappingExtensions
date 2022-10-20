@@ -4,7 +4,7 @@
 	"info": {
 		"name": "MappingExtensions",
 		"id": "MappingExtensions",
-		"version": "0.21.5",
+		"version": "0.22.0",
 		"url": null,
 		"additionalData": {}
 	},
@@ -20,22 +20,17 @@
 		},
 		{
 			"id": "codegen",
-			"versionRange": "^0.25.0",
+			"versionRange": "^0.28.0",
 			"additionalData": {}
 		},
 		{
 			"id": "pinkcore",
-			"versionRange": "^1.7.0",
+			"versionRange": "^1.8.3",
 			"additionalData": {}
 		},
 		{
 			"id": "sombrero",
-			"versionRange": "^0.1.35",
-			"additionalData": {}
-		},
-		{
-			"id": "config-utils",
-			"versionRange": "^0.8.0",
+			"versionRange": "^0.1.37",
 			"additionalData": {}
 		},
 		{
