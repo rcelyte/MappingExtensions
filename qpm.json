@@ -4,7 +4,7 @@
 	"info": {
 		"name": "MappingExtensions",
 		"id": "MappingExtensions",
-		"version": "0.22.0",
+		"version": "0.22.1",
 		"url": null,
 		"additionalData": {}
 	},
@@ -20,12 +20,12 @@
 		},
 		{
 			"id": "codegen",
-			"versionRange": "^0.28.0",
+			"versionRange": "^0.32.0",
 			"additionalData": {}
 		},
 		{
 			"id": "pinkcore",
-			"versionRange": "^1.8.3",
+			"versionRange": "^1.8.7",
 			"additionalData": {}
 		},
 		{

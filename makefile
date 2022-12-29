@@ -27,10 +27,34 @@ $(OBJDIR)/%.cpp.o: %.cpp extern makefile | ndk
 	@mkdir -p "$(@D)"
 	$(CXX) $(CXXFLAGS) -c "$<" -o "$@" -MMD -MP
 
-.obj/mod.json: extern
+.obj/mod.json: extern makefile
 	@echo "[printf $(notdir $@)]"
 	@mkdir -p "$(@D)"
-	printf "{\n\t\"\$$schema\":\"https://raw.githubusercontent.com/Lauriethefish/QuestPatcher.QMod/main/QuestPatcher.QMod/Resources/qmod.schema.json\",\n\t\"_QPVersion\": \"0.1.1\",\n\t\"name\": \"Mapping Extensions\",\n\t\"id\": \"MappingExtensions\",\n\t\"author\": \"StackDoubleFlow, rxzz0, rcelyte\",\n\t\"version\": \"0.22.0\",\n\t\"packageId\": \"com.beatgames.beatsaber\",\n\t\"packageVersion\": \"1.25.1\",\n\t\"description\": \"This adds a host of new things you can do with your maps as a mapper, and allows you to play said maps as a player. An update of the port of the PC original mod by Kyle 1413. Previously maintained by zoller27osu.\",\n\t\"coverImage\": \"cover.png\",\n\t\"dependencies\": [\n\t\t{\n\t\t\t\"version\": \"^0.28.0\",\n\t\t\t\"id\": \"codegen\",\n\t\t\t\"downloadIfMissing\": \"https://github.com/sc2ad/BeatSaber-Quest-Codegen/releases/download/v0.28.0/Codegen.qmod\"\n\t\t}, {\n\t\t\t\"version\": \"1.8.3\",\n\t\t\t\"id\": \"pinkcore\",\n\t\t\t\"downloadIfMissing\": \"https://github.com/BSMGPink/PinkCore/releases/download/v1.8.3/PinkCore.qmod\"\n\t\t}\n\t],\n\t\"modFiles\": [\"libmappingextensions.so\"],\n\t\"libraryFiles\": [\"$(notdir $(wildcard extern/libs/libbeatsaber-hook*.so))\"]\n}" > .obj/mod.json
+	printf "{\n\
+		\"\$$schema\": \"https://raw.githubusercontent.com/Lauriethefish/QuestPatcher.QMod/main/QuestPatcher.QMod/Resources/qmod.schema.json\",\n\
+		\"_QPVersion\": \"0.1.1\",\n\
+		\"name\": \"Mapping Extensions\",\n\
+		\"id\": \"MappingExtensions\",\n\
+		\"author\": \"StackDoubleFlow, rxzz0, rcelyte\",\n\
+		\"version\": \"0.22.1\",\n\
+		\"packageId\": \"com.beatgames.beatsaber\",\n\
+		\"packageVersion\": \"1.27.0_3631150051\",\n\
+		\"description\": \"This adds a host of new things you can do with your maps as a mapper, and allows you to play said maps as a player. An update of the port of the PC original mod by Kyle 1413. Previously maintained by zoller27osu.\",\n\
+		\"coverImage\": \"cover.png\",\n\
+		\"dependencies\": [\n\
+			{\n\
+				\"version\": \"^0.32.0\",\n\
+				\"id\": \"codegen\",\n\
+				\"downloadIfMissing\": \"https://github.com/sc2ad/BeatSaber-Quest-Codegen/releases/download/v0.32.0/Codegen.qmod\"\n\
+			}, {\n\
+				\"version\": \"1.8.7\",\n\
+				\"id\": \"pinkcore\",\n\
+				\"downloadIfMissing\": \"https://github.com/BSMGPink/PinkCore/releases/download/v1.8.7/PinkCore.qmod\"\n\
+			}\n\
+		],\n\
+		\"modFiles\": [\"libmappingextensions.so\"],\n\
+		\"libraryFiles\": [\"$(notdir $(wildcard extern/libs/libbeatsaber-hook*.so))\"]\n\
+	}" > .obj/mod.json
 
 MappingExtensions.qmod: libmappingextensions.so .obj/mod.json
 	@echo "[zip $@]"
