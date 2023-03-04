@@ -566,7 +566,7 @@ MAKE_HOOK_MATCH(StaticBeatmapObjectSpawnMovementData_LineYPosForLineLayer, &Glob
 
 extern "C" DL_EXPORT void setup(ModInfo& info) {
 	info.id = "MappingExtensions";
-	info.version = "0.22.1";
+	info.version = "0.22.2";
 	modInfo = info;
 	logger = new Logger(modInfo, LoggerOptions(false, true));
 	logger->info("Leaving setup!");
