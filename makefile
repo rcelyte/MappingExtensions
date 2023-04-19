@@ -36,7 +36,7 @@ $(OBJDIR)/%.cpp.o: %.cpp extern makefile | ndk
 		\"name\": \"Mapping Extensions\",\n\
 		\"id\": \"MappingExtensions\",\n\
 		\"author\": \"StackDoubleFlow, rxzz0, rcelyte\",\n\
-		\"version\": \"0.22.2\",\n\
+		\"version\": \"0.22.3\",\n\
 		\"packageId\": \"com.beatgames.beatsaber\",\n\
 		\"packageVersion\": \"1.28.0_4124311467\",\n\
 		\"description\": \"This adds a host of new things you can do with your maps as a mapper, and allows you to play said maps as a player. An update of the port of the PC original mod by Kyle 1413. Previously maintained by zoller27osu.\",\n\
