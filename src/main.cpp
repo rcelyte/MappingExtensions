@@ -32,14 +32,6 @@
 
 const Paper::ConstLoggerContext<18> logger = {"MappingExtensions"};
 
-static int32_t ToNormalizedPrecisionIndex(int32_t index) {
-	if(index <= -1000)
-		return index + 1000;
-	if(index >= 1000)
-		return index - 1000;
-	return index * 1000;
-}
-
 static const std::string_view requirementNames[] = {
 	"Mapping Extensions",
 	"Mapping Extensions-Precision Placement",
@@ -87,16 +79,16 @@ static inline float SpawnRotationForEventValue(float orig, int32_t index) {
 	return orig;
 }
 
-static inline int32_t GetHeightForObstacleType(int32_t orig, BeatmapSaveDataVersion2_6_0AndEarlier::ObstacleType obstacleType) {
-	if((obstacleType.value__ < 1000 || obstacleType.value__ > 4000) && (obstacleType.value__ < 4001 || obstacleType.value__ > 4005000))
+static inline int32_t GetHeightForObstacleType(const int32_t orig, const int32_t obstacleType) {
+	if((obstacleType < 1000 || obstacleType > 4000) && (obstacleType < 4001 || obstacleType > 4005000))
 		return orig;
-	return ((obstacleType.value__ >= 4001 && obstacleType.value__ <= 4100000) ? (obstacleType.value__ - 4001) / 1000 : obstacleType.value__ - 1000) * 5 + 1000;
+	return ((obstacleType >= 4001 && obstacleType <= 4100000) ? (obstacleType - 4001) / 1000 : obstacleType - 1000) * 5 + 1000;
 }
 
-static inline GlobalNamespace::NoteLineLayer GetLayerForObstacleType(GlobalNamespace::NoteLineLayer orig, BeatmapSaveDataVersion2_6_0AndEarlier::ObstacleType obstacleType) {
-	if((obstacleType.value__ < 1000 || obstacleType.value__ > 4000) && (obstacleType.value__ < 4001 || obstacleType.value__ > 4005000))
+static inline GlobalNamespace::NoteLineLayer GetLayerForObstacleType(const GlobalNamespace::NoteLineLayer orig, const int32_t obstacleType) {
+	if((obstacleType < 1000 || obstacleType > 4000) && (obstacleType < 4001 || obstacleType > 4005000))
 		return orig;
-	const int32_t startHeight = (obstacleType.value__ >= 4001 && obstacleType.value__ <= 4100000) ? (obstacleType.value__ - 4001) % 1000 : 0;
+	const int32_t startHeight = (obstacleType >= 4001 && obstacleType <= 4100000) ? (obstacleType - 4001) % 1000 : 0;
 	return static_cast<int32_t>(static_cast<float>(startHeight) * (20.f / 3)) + 1334;
 }
 
@@ -122,22 +114,27 @@ MAKE_HOOK_MATCH(BeatmapDataLoaderVersion2_6_0AndEarlier_BeatmapDataLoader_GetBea
 		environmentKeywords, environmentLightGroups, playerSpecificSettings);
 	for(System::Collections::Generic::LinkedListNode_1<GlobalNamespace::BeatmapDataItem*> *iter = result->get_allBeatmapDataItems()->head, *const end = iter ? iter->prev : nullptr; iter; iter = iter->next) {
 		GlobalNamespace::BeatmapDataItem *const item = iter->item;
-		if(GlobalNamespace::NoteData *const data = il2cpp_utils::try_cast<GlobalNamespace::NoteData>(item).value_or(nullptr); data) {
-			data->noteLineLayer = noteCache.restore(data);
+		if(GlobalNamespace::NoteData *const data = il2cpp_utils::try_cast<GlobalNamespace::NoteData>(item).value_or(nullptr)) {
+			if(const std::optional<int32_t> lineLayer = noteCache.restore(data))
+				data->noteLineLayer = *lineLayer;
 		} else if(GlobalNamespace::ObstacleData *const obstacleData = il2cpp_utils::try_cast<GlobalNamespace::ObstacleData>(item).value_or(nullptr)) {
-			const BeatmapSaveDataVersion2_6_0AndEarlier::ObstacleType type = obstacleCache.restore(obstacleData);
-			obstacleData->lineLayer = GetLayerForObstacleType(obstacleData->lineLayer, type);
-			obstacleData->height = GetHeightForObstacleType(obstacleData->height, type);
+			if(const std::optional<int32_t> type = obstacleCache.restore(obstacleData)) {
+				obstacleData->lineLayer = GetLayerForObstacleType(obstacleData->lineLayer, *type);
+				obstacleData->height = GetHeightForObstacleType(obstacleData->height, *type);
+			}
 		} else if(GlobalNamespace::SliderData *const sliderData = il2cpp_utils::try_cast<GlobalNamespace::SliderData>(item).value_or(nullptr)) {
-			const std::array<int32_t, 2> layers = sliderCache.restore(sliderData);
-			sliderData->headLineLayer = layers[0];
-			sliderData->headBeforeJumpLineLayer = layers[0];
-			sliderData->tailLineLayer = layers[1];
-			sliderData->tailBeforeJumpLineLayer = layers[1];
+			if(const std::optional<std::array<int32_t, 2>> layers = sliderCache.restore(sliderData)) {
+				sliderData->headLineLayer = (*layers)[0];
+				sliderData->headBeforeJumpLineLayer = (*layers)[0];
+				sliderData->tailLineLayer = (*layers)[1];
+				sliderData->tailBeforeJumpLineLayer = (*layers)[1];
+			}
 		} else if(GlobalNamespace::WaypointData *const waypointData = il2cpp_utils::try_cast<GlobalNamespace::WaypointData>(item).value_or(nullptr)) {
-			waypointData->lineLayer = waypointCache.restore(waypointData);
+			if(const std::optional<int32_t> lineLayer = waypointCache.restore(waypointData))
+				waypointData->lineLayer = *lineLayer;
 		} else if(GlobalNamespace::SpawnRotationBeatmapEventData *const rotationData = il2cpp_utils::try_cast<GlobalNamespace::SpawnRotationBeatmapEventData>(item).value_or(nullptr)) {
-			rotationData->_deltaRotation = SpawnRotationForEventValue(rotationData->_deltaRotation, rotationCache.restore(rotationData));
+			if(const std::optional<int32_t> rotation = rotationCache.restore(rotationData))
+				rotationData->_deltaRotation = SpawnRotationForEventValue(rotationData->_deltaRotation, *rotation);
 		}
 		if(iter == end)
 			break;
@@ -167,17 +164,21 @@ MAKE_HOOK_MATCH(BeatmapDataLoaderVersion3_BeatmapDataLoader_GetBeatmapDataFromSa
 	for(System::Collections::Generic::LinkedListNode_1<GlobalNamespace::BeatmapDataItem*> *iter = result->get_allBeatmapDataItems()->head, *const end = iter ? iter->prev : nullptr; iter; iter = iter->next) {
 		GlobalNamespace::BeatmapDataItem *const item = iter->item;
 		if(GlobalNamespace::NoteData *const data = il2cpp_utils::try_cast<GlobalNamespace::NoteData>(item).value_or(nullptr); data) {
-			data->noteLineLayer = (data->gameplayType == GlobalNamespace::NoteData::GameplayType::Bomb) ? bombCache.restore(data) : noteCache.restore(data);
+			if(const std::optional<int32_t> lineLayer = (data->gameplayType == GlobalNamespace::NoteData::GameplayType::Bomb) ? bombCache.restore(data) : noteCache.restore(data))
+				data->noteLineLayer = *lineLayer;
 		} else if(GlobalNamespace::ObstacleData *const obstacleData = il2cpp_utils::try_cast<GlobalNamespace::ObstacleData>(item).value_or(nullptr)) {
-			obstacleData->lineLayer = obstacleCache.restore(obstacleData);
+			if(const std::optional<int32_t> lineLayer = obstacleCache.restore(obstacleData))
+				obstacleData->lineLayer = *lineLayer;
 		} else if(GlobalNamespace::SliderData *const sliderData = il2cpp_utils::try_cast<GlobalNamespace::SliderData>(item).value_or(nullptr)) {
-			const std::array<int32_t, 2> layers = (sliderData->sliderType == GlobalNamespace::SliderData::Type::Burst) ? burstCache.restore(sliderData) : sliderCache.restore(sliderData);
-			sliderData->headLineLayer = layers[0];
-			sliderData->headBeforeJumpLineLayer = layers[0];
-			sliderData->tailLineLayer = layers[1];
-			sliderData->tailBeforeJumpLineLayer = layers[1];
+			if(const std::optional<std::array<int32_t, 2>> layers = (sliderData->sliderType == GlobalNamespace::SliderData::Type::Burst) ? burstCache.restore(sliderData) : sliderCache.restore(sliderData)) {
+				sliderData->headLineLayer = (*layers)[0];
+				sliderData->headBeforeJumpLineLayer = (*layers)[0];
+				sliderData->tailLineLayer = (*layers)[1];
+				sliderData->tailBeforeJumpLineLayer = (*layers)[1];
+			}
 		} else if(GlobalNamespace::WaypointData *const waypointData = il2cpp_utils::try_cast<GlobalNamespace::WaypointData>(item).value_or(nullptr)) {
-			waypointData->lineLayer = waypointCache.restore(waypointData);
+			if(const std::optional<int32_t> lineLayer = waypointCache.restore(waypointData))
+				waypointData->lineLayer = *lineLayer;
 		}
 		if(iter == end)
 			break;
@@ -369,7 +370,7 @@ MAKE_HOOK_MATCH(NoteCutDirectionExtensions_Mirrored, &GlobalNamespace::NoteCutDi
 	return result;
 }
 
-static inline std::optional<int32_t> MirrorPrecisionLineIndex(const int32_t lineIndex) {
+static std::optional<int32_t> MirrorPrecisionLineIndex(const int32_t lineIndex) {
 	if(lineIndex >= 1000 || lineIndex <= -1000)
 		return ((lineIndex > -1000 && lineIndex < 4000) ? 5000 : 3000) - lineIndex;
 	if(static_cast<uint32_t>(lineIndex) > 3u)
@@ -411,6 +412,14 @@ MAKE_HOOK_MATCH(ObstacleController_Init, &GlobalNamespace::ObstacleController::I
 	ObstacleController_Init(self, obstacleData, worldRotation, startPos, midPos, endPos, move1Duration, move2Duration, singleLineWidth / 1000, height);
 	self->_startPos.x += fix;
 	obstacleData->width = oldWidth;
+}
+
+static int32_t ToNormalizedPrecisionIndex(int32_t index) {
+	if(index <= -1000)
+		return index + 1000;
+	if(index >= 1000)
+		return index - 1000;
+	return index * 1000;
 }
 
 MAKE_HOOK_MATCH(ObstacleData_Mirror, &GlobalNamespace::ObstacleData::Mirror, void, GlobalNamespace::ObstacleData *const self, int32_t lineCount) {
@@ -468,18 +477,17 @@ MAKE_HOOK_MATCH(StaticBeatmapObjectSpawnMovementData_LineYPosForLineLayer, &Glob
 
 extern "C" void setup(CModInfo*);
 extern "C" [[gnu::visibility("default")]] void setup(CModInfo *const modInfo) {
-	static CModInfo info = {
+	*modInfo = {
 		.id = "MappingExtensions",
 		.version = "0.23.0",
 		.version_long = 12,
 	};
-	*modInfo = info;
 	logger.info("Leaving setup!");
 }
 
 extern "C" void load();
 extern "C" [[gnu::visibility("default")]] void load() {
-	logger.info("Installing ME Hooks, please wait");
+	logger.info("Installing ME Hooks");
 	il2cpp_functions::Init();
 
 	INSTALL_HOOK(logger, GameplayCoreSceneSetupData_LoadTransformedBeatmapDataAsync)

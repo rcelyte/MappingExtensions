@@ -83,19 +83,16 @@ template<> struct RestoreBlob<BeatmapSaveDataVersion2_6_0AndEarlier::ObstacleDat
 		int32_t lineIndex;
 		float duration;
 		int32_t width;
-		int32_t height;
 		Ident(GlobalNamespace::ObstacleData *from) :
 			time(from->get_time()),
 			lineIndex(from->get_lineIndex()),
 			duration(from->get_duration()),
-			width(from->get_width()),
-			height(from->get_height()) {}
+			width(from->get_width()) {}
 		Ident(BeatmapSaveDataVersion2_6_0AndEarlier::ObstacleData *from, BpmState *bpmState) :
 			time(bpmState->GetTime(from->get_time())),
 			lineIndex(from->get_lineIndex()),
 			duration(from->get_duration()),
-			width(from->get_width()),
-			height(BeatmapDataLoaderVersion2_6_0AndEarlier::BeatmapDataLoader::ObstacleConverter::GetHeightForObstacleType(from->get_type())) {}
+			width(from->get_width()) {}
 	} ident;
 	int32_t value;
 	RestoreBlob(BeatmapSaveDataVersion2_6_0AndEarlier::ObstacleData *from, BpmState *bpmState) : ident(from, bpmState), value(from->get_type()) {}
@@ -244,7 +241,7 @@ template<> struct RestoreBlob<BeatmapSaveDataVersion3::ObstacleData> {
 		Ident(BeatmapSaveDataVersion3::ObstacleData *from, BpmState *bpmState) :
 			time(bpmState->GetTime(from->get_beat())),
 			lineIndex(from->get_line()),
-			duration(bpmState->GetTime(from->get_beat() + from->get_duration()) - time),
+			duration(bpmState->GetTime(from->get_beat() + from->get_duration()) - this->time),
 			width(from->get_width()),
 			height(from->get_height()) {}
 	} ident;
@@ -336,25 +333,21 @@ struct LayerCache {
 			}
 		}
 	}
-	using TValue = decltype(RestoreBlob<TObjectData>::value);
-	template<class BeatmapData> TValue restore(BeatmapData *data) {
+	std::optional<decltype(RestoreBlob<TObjectData>::value)> restore(auto *const data) {
 		const typename RestoreBlob<TObjectData>::Ident match(data);
-		TValue res = {};
-		size_t i = head;
-		for(; i < cache.size(); ++i) {
-			if(matched[i])
+		for(size_t i = head; i < cache.size(); ++i) {
+			if(matched[i] || memcmp(&match, &cache[i].ident, sizeof(match)) != 0)
 				continue;
-			if(memcmp(&match, &cache[i].ident, sizeof(match)))
-				continue;
-			res = cache[i].value;
 			matched[i] = true;
-			break;
+			if(i == head) {
+				do {
+					++head;
+				} while(head < cache.size() && matched[head]);
+			}
+			return cache[i].value;
 		}
-		failCount += (i == cache.size());
-		for(; head < cache.size(); ++head)
-			if(!matched[head])
-				break;
-		return res;
+		++failCount;
+		return std::nullopt;
 	}
 };
 LayerCache(void) -> LayerCache<void>;
