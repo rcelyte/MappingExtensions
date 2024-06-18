@@ -485,9 +485,8 @@ extern "C" [[gnu::visibility("default")]] void setup(CModInfo *const modInfo) {
 	logger.info("Leaving setup!");
 }
 
-extern "C" void load();
-extern "C" [[gnu::visibility("default")]] void load() {
-	logger.info("Installing ME Hooks");
+extern "C" void late_load();
+extern "C" [[gnu::visibility("default")]] void late_load() {
 	il2cpp_functions::Init();
 
 	INSTALL_HOOK(logger, GameplayCoreSceneSetupData_LoadTransformedBeatmapDataAsync)

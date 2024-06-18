@@ -57,7 +57,7 @@ $(OBJDIR)/%.cpp.o: %.cpp extern makefile | ndk
 				\"downloadIfMissing\": \"https://github.com/raineio/Quest-SongCore/releases/download/v1.1.2/SongCore.qmod\"\n\
 			}\n\
 		],\n\
-		\"modFiles\": [\"libmappingextensions.so\"],\n\
+		\"lateModFiles\": [\"libmappingextensions.so\"],\n\
 		\"libraryFiles\": [\"$(notdir $(wildcard extern/libs/libbeatsaber-hook*.so))\"]\n\
 	}" > .obj/mod.json
 
