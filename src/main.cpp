@@ -115,23 +115,25 @@ MAKE_HOOK_MATCH(BeatmapDataLoaderVersion2_6_0AndEarlier_BeatmapDataLoader_GetBea
 	for(System::Collections::Generic::LinkedListNode_1<GlobalNamespace::BeatmapDataItem*> *iter = result->get_allBeatmapDataItems()->head, *const end = iter ? iter->prev : nullptr; iter; iter = iter->next) {
 		GlobalNamespace::BeatmapDataItem *const item = iter->item;
 		if(GlobalNamespace::NoteData *const data = il2cpp_utils::try_cast<GlobalNamespace::NoteData>(item).value_or(nullptr)) {
-			if(const std::optional<int32_t> lineLayer = noteCache.restore(data))
-				data->noteLineLayer = *lineLayer;
+			if(const auto value = noteCache.restore(data)) {
+				data->noteLineLayer = value->lineLayer.value__;
+				data->cutDirection = value->cutDirection.value__;
+			}
 		} else if(GlobalNamespace::ObstacleData *const obstacleData = il2cpp_utils::try_cast<GlobalNamespace::ObstacleData>(item).value_or(nullptr)) {
-			if(const std::optional<int32_t> type = obstacleCache.restore(obstacleData)) {
-				obstacleData->lineLayer = GetLayerForObstacleType(obstacleData->lineLayer, *type);
-				obstacleData->height = GetHeightForObstacleType(obstacleData->height, *type);
+			if(const std::optional<BeatmapSaveDataVersion2_6_0AndEarlier::ObstacleType> type = obstacleCache.restore(obstacleData)) {
+				obstacleData->lineLayer = GetLayerForObstacleType(obstacleData->lineLayer, type->value__);
+				obstacleData->height = GetHeightForObstacleType(obstacleData->height, type->value__);
 			}
 		} else if(GlobalNamespace::SliderData *const sliderData = il2cpp_utils::try_cast<GlobalNamespace::SliderData>(item).value_or(nullptr)) {
-			if(const std::optional<std::array<int32_t, 2>> layers = sliderCache.restore(sliderData)) {
-				sliderData->headLineLayer = (*layers)[0];
-				sliderData->headBeforeJumpLineLayer = (*layers)[0];
-				sliderData->tailLineLayer = (*layers)[1];
-				sliderData->tailBeforeJumpLineLayer = (*layers)[1];
+			if(const auto layers = sliderCache.restore(sliderData)) {
+				sliderData->headLineLayer = layers->headLayer.value__;
+				sliderData->headBeforeJumpLineLayer = layers->headLayer.value__;
+				sliderData->tailLineLayer = layers->tailLayer.value__;
+				sliderData->tailBeforeJumpLineLayer = layers->tailLayer.value__;
 			}
 		} else if(GlobalNamespace::WaypointData *const waypointData = il2cpp_utils::try_cast<GlobalNamespace::WaypointData>(item).value_or(nullptr)) {
-			if(const std::optional<int32_t> lineLayer = waypointCache.restore(waypointData))
-				waypointData->lineLayer = *lineLayer;
+			if(const std::optional<BeatmapSaveDataCommon::NoteLineLayer> lineLayer = waypointCache.restore(waypointData))
+				waypointData->lineLayer = lineLayer->value__;
 		} else if(GlobalNamespace::SpawnRotationBeatmapEventData *const rotationData = il2cpp_utils::try_cast<GlobalNamespace::SpawnRotationBeatmapEventData>(item).value_or(nullptr)) {
 			if(const std::optional<int32_t> rotation = rotationCache.restore(rotationData))
 				rotationData->_deltaRotation = SpawnRotationForEventValue(rotationData->_deltaRotation, *rotation);
@@ -164,21 +166,26 @@ MAKE_HOOK_MATCH(BeatmapDataLoaderVersion3_BeatmapDataLoader_GetBeatmapDataFromSa
 	for(System::Collections::Generic::LinkedListNode_1<GlobalNamespace::BeatmapDataItem*> *iter = result->get_allBeatmapDataItems()->head, *const end = iter ? iter->prev : nullptr; iter; iter = iter->next) {
 		GlobalNamespace::BeatmapDataItem *const item = iter->item;
 		if(GlobalNamespace::NoteData *const data = il2cpp_utils::try_cast<GlobalNamespace::NoteData>(item).value_or(nullptr); data) {
-			if(const std::optional<int32_t> lineLayer = (data->gameplayType == GlobalNamespace::NoteData::GameplayType::Bomb) ? bombCache.restore(data) : noteCache.restore(data))
-				data->noteLineLayer = *lineLayer;
+			if(data->gameplayType == GlobalNamespace::NoteData::GameplayType::Bomb) {
+				if(const std::optional<int32_t> lineLayer = bombCache.restore(data))
+					data->noteLineLayer = *lineLayer;
+			} else if(const auto value = noteCache.restore(data)) {
+				data->noteLineLayer = value->layer.value__;
+				data->cutDirection = value->cutDirection.value__;
+			}
 		} else if(GlobalNamespace::ObstacleData *const obstacleData = il2cpp_utils::try_cast<GlobalNamespace::ObstacleData>(item).value_or(nullptr)) {
 			if(const std::optional<int32_t> lineLayer = obstacleCache.restore(obstacleData))
 				obstacleData->lineLayer = *lineLayer;
 		} else if(GlobalNamespace::SliderData *const sliderData = il2cpp_utils::try_cast<GlobalNamespace::SliderData>(item).value_or(nullptr)) {
-			if(const std::optional<std::array<int32_t, 2>> layers = (sliderData->sliderType == GlobalNamespace::SliderData::Type::Burst) ? burstCache.restore(sliderData) : sliderCache.restore(sliderData)) {
-				sliderData->headLineLayer = (*layers)[0];
-				sliderData->headBeforeJumpLineLayer = (*layers)[0];
-				sliderData->tailLineLayer = (*layers)[1];
-				sliderData->tailBeforeJumpLineLayer = (*layers)[1];
+			if(const auto layers = (sliderData->sliderType == GlobalNamespace::SliderData::Type::Burst) ? burstCache.restore(sliderData) : sliderCache.restore(sliderData)) {
+				sliderData->headLineLayer = layers->headLayer.value__;
+				sliderData->headBeforeJumpLineLayer = layers->headLayer.value__;
+				sliderData->tailLineLayer = layers->tailLayer.value__;
+				sliderData->tailBeforeJumpLineLayer = layers->tailLayer.value__;
 			}
 		} else if(GlobalNamespace::WaypointData *const waypointData = il2cpp_utils::try_cast<GlobalNamespace::WaypointData>(item).value_or(nullptr)) {
-			if(const std::optional<int32_t> lineLayer = waypointCache.restore(waypointData))
-				waypointData->lineLayer = *lineLayer;
+			if(const std::optional<BeatmapSaveDataCommon::NoteLineLayer> lineLayer = waypointCache.restore(waypointData))
+				waypointData->lineLayer = lineLayer->value__;
 		}
 		if(iter == end)
 			break;
@@ -479,8 +486,8 @@ extern "C" void setup(CModInfo*);
 extern "C" [[gnu::visibility("default")]] void setup(CModInfo *const modInfo) {
 	*modInfo = {
 		.id = "MappingExtensions",
-		.version = "0.23.0",
-		.version_long = 12,
+		.version = "0.23.1",
+		.version_long = 13,
 	};
 	logger.info("Leaving setup!");
 }

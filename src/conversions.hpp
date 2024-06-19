@@ -60,21 +60,31 @@ template<> struct RestoreBlob<BeatmapSaveDataVersion2_6_0AndEarlier::NoteData> {
 	struct Ident {
 		float time;
 		int32_t lineIndex;
-		BeatmapSaveDataVersion2_6_0AndEarlier::NoteType noteType;
+		GlobalNamespace::NoteData::GameplayType gameplayType;
+		GlobalNamespace::ColorType colorType;
 		GlobalNamespace::NoteCutDirection cutDirection;
 		Ident(GlobalNamespace::NoteData *from) :
 			time(from->get_time()),
 			lineIndex(from->get_lineIndex()),
-			noteType((from->get_gameplayType() == GlobalNamespace::NoteData::GameplayType::Bomb) ? BeatmapSaveDataVersion2_6_0AndEarlier::NoteType::Bomb : from->get_colorType().value__),
+			gameplayType(from->get_gameplayType()),
+			colorType(from->get_colorType()),
 			cutDirection(from->get_cutDirection()) {}
 		Ident(BeatmapSaveDataVersion2_6_0AndEarlier::NoteData *from, BpmState *bpmState) :
 			time(bpmState->GetTime(from->get_time())),
 			lineIndex(from->get_lineIndex()),
-			noteType(from->get_type()),
-			cutDirection(GlobalNamespace::BeatmapTypeConverters::ConvertNoteCutDirection(from->get_cutDirection())) {}
+			gameplayType((from->get_type() == BeatmapSaveDataVersion2_6_0AndEarlier::NoteType::Bomb) ?
+				GlobalNamespace::NoteData::GameplayType::Bomb : GlobalNamespace::NoteData::GameplayType::Normal),
+			colorType((from->get_type() == BeatmapSaveDataVersion2_6_0AndEarlier::NoteType::Bomb) ? GlobalNamespace::ColorType::None :
+				(from->get_type() == BeatmapSaveDataVersion2_6_0AndEarlier::NoteType::NoteA) ? GlobalNamespace::ColorType::ColorA : GlobalNamespace::ColorType::ColorB),
+			cutDirection((from->get_type() == BeatmapSaveDataVersion2_6_0AndEarlier::NoteType::Bomb) ? GlobalNamespace::NoteCutDirection::None :
+				GlobalNamespace::BeatmapTypeConverters::ConvertNoteCutDirection(from->get_cutDirection())) {}
 	} ident;
-	int32_t value;
-	RestoreBlob(BeatmapSaveDataVersion2_6_0AndEarlier::NoteData *from, BpmState *bpmState) : ident(from, bpmState), value(from->get_lineLayer()) {}
+	struct {
+		BeatmapSaveDataCommon::NoteLineLayer lineLayer;
+		BeatmapSaveDataCommon::NoteCutDirection cutDirection;
+	} value;
+	RestoreBlob(BeatmapSaveDataVersion2_6_0AndEarlier::NoteData *from, BpmState *bpmState) : ident(from, bpmState),
+		value{from->get_lineLayer(), from->get_cutDirection()} {}
 };
 
 template<> struct RestoreBlob<BeatmapSaveDataVersion2_6_0AndEarlier::ObstacleData> {
@@ -91,10 +101,10 @@ template<> struct RestoreBlob<BeatmapSaveDataVersion2_6_0AndEarlier::ObstacleDat
 		Ident(BeatmapSaveDataVersion2_6_0AndEarlier::ObstacleData *from, BpmState *bpmState) :
 			time(bpmState->GetTime(from->get_time())),
 			lineIndex(from->get_lineIndex()),
-			duration(from->get_duration()),
+			duration(bpmState->GetTime(from->get_time() + from->get_duration()) - this->time),
 			width(from->get_width()) {}
 	} ident;
-	int32_t value;
+	BeatmapSaveDataVersion2_6_0AndEarlier::ObstacleType value;
 	RestoreBlob(BeatmapSaveDataVersion2_6_0AndEarlier::ObstacleData *from, BpmState *bpmState) : ident(from, bpmState), value(from->get_type()) {}
 };
 
@@ -128,6 +138,10 @@ struct SliderLinematch {
 		tailLineIndex(from->get_tailLine()) {}
 };
 
+struct SliderRestoreLayers {
+	BeatmapSaveDataCommon::NoteLineLayer headLayer, tailLayer;
+};
+
 template<> struct RestoreBlob<BeatmapSaveDataVersion2_6_0AndEarlier::SliderData> {
 	struct Ident {
 		SliderLinematch base;
@@ -148,9 +162,9 @@ template<> struct RestoreBlob<BeatmapSaveDataVersion2_6_0AndEarlier::SliderData>
 			headControlPointLengthMultiplier(from->get_headControlPointLengthMultiplier()),
 			tailControlPointLengthMultiplier(from->get_tailControlPointLengthMultiplier()) {}
 	} ident;
-	std::array<int32_t, 2> value;
+	SliderRestoreLayers value;
 	RestoreBlob(BeatmapSaveDataVersion2_6_0AndEarlier::SliderData *from, BpmState *bpmState) :
-		ident(from, bpmState), value({from->get_headLineLayer().value__, from->get_tailLineLayer().value__}) {}
+		ident(from, bpmState), value{from->get_headLineLayer(), from->get_tailLineLayer()} {}
 };
 
 template<> struct RestoreBlob<BeatmapSaveDataVersion2_6_0AndEarlier::WaypointData> {
@@ -167,7 +181,7 @@ template<> struct RestoreBlob<BeatmapSaveDataVersion2_6_0AndEarlier::WaypointDat
 			lineIndex(from->get_lineIndex()),
 			offsetDirection(GlobalNamespace::BeatmapTypeConverters::ConvertOffsetDirection(from->get_offsetDirection())) {}
 	} ident;
-	int32_t value;
+	BeatmapSaveDataCommon::NoteLineLayer value;
 	RestoreBlob(BeatmapSaveDataVersion2_6_0AndEarlier::WaypointData *from, BpmState *bpmState) : ident(from, bpmState), value(from->get_lineLayer()) {}
 };
 
@@ -206,8 +220,11 @@ template<> struct RestoreBlob<BeatmapSaveDataVersion3::ColorNoteData> {
 			cutDirection(GlobalNamespace::BeatmapTypeConverters::ConvertNoteCutDirection(from->get_cutDirection())),
 			cutDirectionAngleOffset(static_cast<float>(from->get_angleOffset())) {}
 	} ident;
-	int32_t value;
-	RestoreBlob(BeatmapSaveDataVersion3::ColorNoteData *from, BpmState *bpmState) : ident(from, bpmState), value(from->get_layer()) {}
+	struct {
+		BeatmapSaveDataCommon::NoteLineLayer layer;
+		BeatmapSaveDataCommon::NoteCutDirection cutDirection;
+	} value;
+	RestoreBlob(BeatmapSaveDataVersion3::ColorNoteData *from, BpmState *bpmState) : ident(from, bpmState), value{from->get_layer(), from->get_cutDirection()} {}
 };
 
 template<> struct RestoreBlob<BeatmapSaveDataVersion3::BombNoteData> {
@@ -269,9 +286,9 @@ template<> struct RestoreBlob<BeatmapSaveDataVersion3::SliderData> {
 			headControlPointLengthMultiplier(from->get_headControlPointLengthMultiplier()),
 			tailControlPointLengthMultiplier(from->get_tailControlPointLengthMultiplier()) {}
 	} ident;
-	std::array<int32_t, 2> value;
+	SliderRestoreLayers value;
 	RestoreBlob(BeatmapSaveDataVersion3::SliderData *from, BpmState *bpmState) :
-		ident(from, bpmState), value({from->get_headLayer(), from->get_tailLayer()}) {}
+		ident(from, bpmState), value{from->get_headLayer(), from->get_tailLayer()} {}
 };
 
 template<> struct RestoreBlob<BeatmapSaveDataVersion3::BurstSliderData> {
@@ -288,9 +305,9 @@ template<> struct RestoreBlob<BeatmapSaveDataVersion3::BurstSliderData> {
 			sliceCount(from->get_sliceCount()),
 			squishAmount(from->get_squishAmount()) {}
 	} ident;
-	std::array<int32_t, 2> value;
+	SliderRestoreLayers value;
 	RestoreBlob(BeatmapSaveDataVersion3::BurstSliderData *from, BpmState *bpmState) :
-		ident(from, bpmState), value({from->get_headLayer(), from->get_tailLayer()}) {}
+		ident(from, bpmState), value{from->get_headLayer(), from->get_tailLayer()} {}
 };
 
 template<> struct RestoreBlob<BeatmapSaveDataVersion3::WaypointData> {
@@ -307,7 +324,7 @@ template<> struct RestoreBlob<BeatmapSaveDataVersion3::WaypointData> {
 			lineIndex(from->get_line()),
 			offsetDirection(GlobalNamespace::BeatmapTypeConverters::ConvertOffsetDirection(from->get_offsetDirection())) {}
 	} ident;
-	int32_t value;
+	BeatmapSaveDataCommon::NoteLineLayer value;
 	RestoreBlob(BeatmapSaveDataVersion3::WaypointData *from, BpmState *bpmState) : ident(from, bpmState), value(from->get_layer()) {}
 };
 

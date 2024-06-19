@@ -41,7 +41,7 @@ $(OBJDIR)/%.cpp.o: %.cpp extern makefile | ndk
 		\"name\": \"Mapping Extensions\",\n\
 		\"id\": \"MappingExtensions\",\n\
 		\"author\": \"StackDoubleFlow, rxzz0, & rcelyte\",\n\
-		\"version\": \"0.23.0\",\n\
+		\"version\": \"0.23.1\",\n\
 		\"packageId\": \"com.beatgames.beatsaber\",\n\
 		\"packageVersion\": \"1.35.0_8016709773\",\n\
 		\"description\": \"This adds a host of new things you can do with your maps as a mapper, and allows you to play said maps as a player. An update of the port of the PC original mod by Kyle 1413. Previously maintained by zoller27osu.\",\n\
@@ -65,7 +65,7 @@ MappingExtensions.qmod: libmappingextensions.so .obj/mod.json
 	@echo "[zip $@]"
 	zip -j "$@" cover.png extern/libs/libbeatsaber-hook*.so libmappingextensions.so .obj/mod.json
 
-extern:
+extern: qpm.json
 	@echo "[qpm restore]"
 	qpm-rust restore
 
