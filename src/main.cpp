@@ -1,7 +1,7 @@
 // https://github.com/rxzz0/MappingExtensions/blob/main/src/main.cpp
 // Refactored and updated to 1.24.0+ by rcelyte
 
-#include <scotland2/shared/modloader.h>
+#include <scotland2/shared/loader.hpp>
 
 #include <BeatmapDataLoaderVersion2_6_0AndEarlier/BeatmapDataLoaderVersion2_6_0AndEarlier.hpp>
 #include <BeatmapDataLoaderVersion3/BeatmapDataLoaderVersion3.hpp>
@@ -498,9 +498,13 @@ extern "C" [[gnu::visibility("default")]] void late_load() {
 
 	INSTALL_HOOK(logger, GameplayCoreSceneSetupData_LoadTransformedBeatmapDataAsync)
 	INSTALL_HOOK(logger, GameplayCoreSceneSetupData_LoadTransformedBeatmapData)
-	INSTALL_HOOK(logger, BeatmapDataLoaderVersion2_6_0AndEarlier_BeatmapDataLoader_GetBeatmapDataFromSaveData)
-	INSTALL_HOOK(logger, BeatmapDataLoaderVersion3_BeatmapDataLoader_GetBeatmapDataFromSaveData)
-	// INSTALL_HOOK(logger, BeatmapDataLoaderVersion4_BeatmapDataLoader_GetBeatmapDataFromSaveData) // TODO: implement
+	if(const std::vector<modloader::ModData> loaded = modloader::get_loaded(); std::find_if(loaded.begin(), loaded.end(), [](const modloader::ModData &data) {
+			return data.info.id == "CustomJSONData";
+		}) == loaded.end()) {
+		INSTALL_HOOK(logger, BeatmapDataLoaderVersion2_6_0AndEarlier_BeatmapDataLoader_GetBeatmapDataFromSaveData)
+		INSTALL_HOOK(logger, BeatmapDataLoaderVersion3_BeatmapDataLoader_GetBeatmapDataFromSaveData)
+		// INSTALL_HOOK(logger, BeatmapDataLoaderVersion4_BeatmapDataLoader_GetBeatmapDataFromSaveData) // TODO: implement
+	}
 
 	INSTALL_HOOK(logger, BeatmapObjectsInTimeRowProcessor_HandleCurrentTimeSliceAllNotesAndSlidersDidFinishTimeSlice)
 	INSTALL_HOOK(logger, BeatmapObjectSpawnMovementData_GetNoteOffset)

@@ -9,7 +9,7 @@ CXXFLAGS := -O2 -std=c++20 -fPIC -ffunction-sections -fdata-sections -fvisibilit
 	-isystem extern/includes/libil2cpp/il2cpp/libil2cpp -isystem extern/includes/bs-cordl/include -isystem extern/includes/fmt/fmt/include \
 	-isystem extern/includes -DUNITY_2021 -DHAS_CODEGEN -DFMT_HEADER_ONLY
 LDFLAGS = -O2 -s -static-libstdc++ -shared -Wl,--no-undefined,--gc-sections,--fatal-warnings \
-	-Lextern/libs -l:$(notdir $(wildcard extern/libs/libbeatsaber-hook*.so)) -lsongcore -lpaperlog
+	-Lextern/libs -l:$(notdir $(wildcard extern/libs/libbeatsaber-hook*.so)) -lsongcore -lpaperlog -lsl2
 ifdef NDK
 OBJDIR := .obj/$(shell $(CXX) -dumpmachine)
 else
