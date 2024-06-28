@@ -36,14 +36,14 @@ $(OBJDIR)/%.cpp.o: %.cpp extern makefile | ndk
 	@mkdir -p "$(@D)"
 	printf "{\n\
 		\"\$$schema\": \"https://raw.githubusercontent.com/Lauriethefish/QuestPatcher.QMod/main/QuestPatcher.QMod/Resources/qmod.schema.json\",\n\
-		\"_QPVersion\": \"0.1.1\",\n\
+		\"_QPVersion\": \"1.2.0\",\n\
 		\"modloader\": \"Scotland2\",\n\
 		\"name\": \"Mapping Extensions\",\n\
 		\"id\": \"MappingExtensions\",\n\
 		\"author\": \"StackDoubleFlow, rxzz0, & rcelyte\",\n\
-		\"version\": \"0.23.1\",\n\
+		\"version\": \"0.24.0\",\n\
 		\"packageId\": \"com.beatgames.beatsaber\",\n\
-		\"packageVersion\": \"1.35.0_8016709773\",\n\
+		\"packageVersion\": \"1.37.0_9064817954\",\n\
 		\"description\": \"This adds a host of new things you can do with your maps as a mapper, and allows you to play said maps as a player. An update of the port of the PC original mod by Kyle 1413. Previously maintained by zoller27osu.\",\n\
 		\"coverImage\": \"cover.png\",\n\
 		\"dependencies\": [\n\
@@ -52,9 +52,14 @@ $(OBJDIR)/%.cpp.o: %.cpp extern makefile | ndk
 				\"id\": \"paper\",\n\
 				\"downloadIfMissing\": \"https://github.com/Fernthedev/paperlog/releases/download/v3.6.3/paperlog.qmod\"\n\
 			}, {\n\
-				\"version\": \"^1.0.0\",\n\
+				\"version\": \"^1.1.12\",\n\
 				\"id\": \"songcore\",\n\
-				\"downloadIfMissing\": \"https://github.com/raineio/Quest-SongCore/releases/download/v1.1.2/SongCore.qmod\"\n\
+				\"downloadIfMissing\": \"https://github.com/raineio/Quest-SongCore/releases/download/v1.1.13/SongCore.qmod\"\n\
+			}, {\n\
+				\"version\": \"^0.21.1\",\n\
+				\"id\": \"custom-json-data\",\n\
+				\"downloadIfMissing\": \"https://github.com/StackDoubleFlow/CustomJSONData/releases/download/v0.21.1/custom-json-data.qmod\",\n\
+				\"required\": false\n\
 			}\n\
 		],\n\
 		\"lateModFiles\": [\"libmappingextensions.so\"],\n\

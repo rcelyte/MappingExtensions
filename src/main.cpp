@@ -21,6 +21,7 @@
 #include <GlobalNamespace/SliderMeshController.hpp>
 #include <GlobalNamespace/StaticBeatmapObjectSpawnMovementData.hpp>
 #include <GlobalNamespace/WaypointData.hpp>
+#include <System/Collections/Generic/LinkedList_1.hpp>
 #include <System/Diagnostics/Stopwatch.hpp>
 
 #include <sombrero/shared/FastQuaternion.hpp>
@@ -45,8 +46,13 @@ static bool ShouldActivate(GlobalNamespace::GameplayCoreSceneSetupData *const da
 		logger.warn("level missing SongCore metadata");
 		return false;
 	}
-	SongCore::CustomJSONData::CustomLevelInfoSaveData::BasicCustomDifficultyBeatmapDetails details = {};
-	if(!beatmapLevel->standardLevelInfoSaveData->TryGetCharacteristicAndDifficulty(
+	SongCore::CustomJSONData::CustomSaveDataInfo::BasicCustomDifficultyBeatmapDetails details = {};
+	const std::optional<std::reference_wrapper<SongCore::CustomJSONData::CustomSaveDataInfo>> info = beatmapLevel->get_CustomSaveDataInfo();
+	if(!info.has_value()) {
+		logger.warn("get_CustomSaveDataInfo() failed");
+		return false;
+	}
+	if(!info->get().TryGetCharacteristicAndDifficulty(
 			data->beatmapKey.beatmapCharacteristic->serializedName, data->beatmapKey.difficulty, *&details)) {
 		logger.warn("TryGetCharacteristicAndDifficulty() failed");
 		return false;
@@ -80,13 +86,13 @@ static inline float SpawnRotationForEventValue(float orig, int32_t index) {
 }
 
 static inline int32_t GetHeightForObstacleType(const int32_t orig, const int32_t obstacleType) {
-	if((obstacleType < 1000 || obstacleType > 4000) && (obstacleType < 4001 || obstacleType > 4005000))
+	if(obstacleType < 1000 || obstacleType > 4005000)
 		return orig;
 	return ((obstacleType >= 4001 && obstacleType <= 4100000) ? (obstacleType - 4001) / 1000 : obstacleType - 1000) * 5 + 1000;
 }
 
 static inline GlobalNamespace::NoteLineLayer GetLayerForObstacleType(const GlobalNamespace::NoteLineLayer orig, const int32_t obstacleType) {
-	if((obstacleType < 1000 || obstacleType > 4000) && (obstacleType < 4001 || obstacleType > 4005000))
+	if(obstacleType < 1000 || obstacleType > 4005000)
 		return orig;
 	const int32_t startHeight = (obstacleType >= 4001 && obstacleType <= 4100000) ? (obstacleType - 4001) % 1000 : 0;
 	return static_cast<int32_t>(static_cast<float>(startHeight) * (20.f / 3)) + 1334;
@@ -486,8 +492,8 @@ extern "C" void setup(CModInfo*);
 extern "C" [[gnu::visibility("default")]] void setup(CModInfo *const modInfo) {
 	*modInfo = {
 		.id = "MappingExtensions",
-		.version = "0.23.1",
-		.version_long = 13,
+		.version = "0.24.0",
+		.version_long = 14,
 	};
 	logger.info("Leaving setup!");
 }
@@ -535,5 +541,4 @@ extern "C" [[gnu::visibility("default")]] void late_load() {
 #include <GlobalNamespace/zzzz__SpawnRotationBeatmapEventData_impl.hpp>
 #include <System/Collections/Generic/zzzz__IReadOnlyCollection_1_impl.hpp>
 #include <System/Collections/Generic/zzzz__IReadOnlyList_1_impl.hpp>
-#include <System/Collections/Generic/zzzz__LinkedList_1_impl.hpp>
 #include <System/Collections/Generic/zzzz__LinkedListNode_1_impl.hpp>
