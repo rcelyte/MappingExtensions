@@ -4,14 +4,14 @@
 	"info": {
 		"name": "MappingExtensions",
 		"id": "MappingExtensions",
-		"version": "0.24.0",
+		"version": "0.24.1",
 		"url": "https://github.com/rcelyte/MappingExtensions",
 		"additionalData": {}
 	},
 	"dependencies": [
 		{
 			"id": "beatsaber-hook",
-			"versionRange": "^5.1.7",
+			"versionRange": "^5.1.9",
 			"additionalData": {}
 		}, {
 			"id": "bs-cordl",

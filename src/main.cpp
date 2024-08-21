@@ -492,8 +492,8 @@ extern "C" void setup(CModInfo*);
 extern "C" [[gnu::visibility("default")]] void setup(CModInfo *const modInfo) {
 	*modInfo = {
 		.id = "MappingExtensions",
-		.version = "0.24.0",
-		.version_long = 14,
+		.version = "0.24.1",
+		.version_long = 15,
 	};
 	logger.info("Leaving setup!");
 }
