@@ -8,8 +8,10 @@
 #include <BeatmapSaveDataVersion2_6_0AndEarlier/BeatmapSaveDataVersion2_6_0AndEarlier.hpp>
 #include <BeatmapSaveDataVersion3/BeatmapSaveDataVersion3.hpp>
 #include <BeatmapSaveDataVersion4/BeatmapSaveDataVersion4.hpp>
+#include <GlobalNamespace/BeatmapData.hpp>
 #include <GlobalNamespace/BeatmapObjectsInTimeRowProcessor.hpp>
 #include <GlobalNamespace/BeatmapObjectSpawnMovementData.hpp>
+#include <GlobalNamespace/ColorNoteVisuals.hpp>
 #include <GlobalNamespace/EnvironmentKeywords.hpp>
 #include <GlobalNamespace/GameplayCoreSceneSetupData.hpp>
 #include <GlobalNamespace/NoteBasicCutInfoHelper.hpp>
@@ -31,6 +33,10 @@
 #include <beatsaber-hook/shared/utils/hooking.hpp>
 #include <songcore/shared/SongCore.hpp>
 
+SafePtr(void) -> SafePtr<void>;
+
+constexpr bool UseOrigHooks = true;
+
 const Paper::ConstLoggerContext<18> logger = {"MappingExtensions"};
 
 static const std::string_view requirementNames[] = {
@@ -40,240 +46,273 @@ static const std::string_view requirementNames[] = {
 	"Mapping Extensions-More Lanes",
 };
 
-static bool ShouldActivate(GlobalNamespace::GameplayCoreSceneSetupData *const data) {
-	auto *const beatmapLevel = il2cpp_utils::try_cast<SongCore::SongLoader::CustomBeatmapLevel>(data->beatmapLevel).value_or(nullptr);
-	if(beatmapLevel == nullptr) {
-		logger.warn("level missing SongCore metadata");
-		return false;
-	}
-	SongCore::CustomJSONData::CustomSaveDataInfo::BasicCustomDifficultyBeatmapDetails details = {};
-	const std::optional<std::reference_wrapper<SongCore::CustomJSONData::CustomSaveDataInfo>> info = beatmapLevel->get_CustomSaveDataInfo();
-	if(!info.has_value()) {
-		logger.warn("get_CustomSaveDataInfo() failed");
-		return false;
-	}
-	if(!info->get().TryGetCharacteristicAndDifficulty(
-			data->beatmapKey.beatmapCharacteristic->serializedName, data->beatmapKey.difficulty, *&details)) {
-		logger.warn("TryGetCharacteristicAndDifficulty() failed");
-		return false;
-	}
-	for(const std::string &req : details.requirements)
-		for(const std::string_view name : requirementNames)
-			if(req == name)
-				return true;
-	return false;
-}
-
 static bool active = false;
-MAKE_HOOK_MATCH(GameplayCoreSceneSetupData_LoadTransformedBeatmapDataAsync, &GlobalNamespace::GameplayCoreSceneSetupData::LoadTransformedBeatmapDataAsync, System::Threading::Tasks::Task*, GlobalNamespace::GameplayCoreSceneSetupData *const self) {
-	active = ShouldActivate(self);
-	logger.info("ShouldActivate(): {}", active);
+MAKE_HOOK_MATCH(GameplayCoreSceneSetupData_LoadTransformedBeatmapDataAsync, &GlobalNamespace::GameplayCoreSceneSetupData::LoadTransformedBeatmapDataAsync,
+		System::Threading::Tasks::Task*, GlobalNamespace::GameplayCoreSceneSetupData *const self) {
+	active = [self]() -> bool {
+		auto *const beatmapLevel = il2cpp_utils::try_cast<SongCore::SongLoader::CustomBeatmapLevel>(self->beatmapLevel).value_or(nullptr);
+		if(beatmapLevel == nullptr) {
+			logger.warn("level missing SongCore metadata");
+			return false;
+		}
+		const std::optional<std::reference_wrapper<SongCore::CustomJSONData::CustomSaveDataInfo>> info = beatmapLevel->get_CustomSaveDataInfo();
+		if(!info.has_value()) {
+			logger.warn("get_CustomSaveDataInfo() failed");
+			return false;
+		}
+		std::optional<std::reference_wrapper<const SongCore::CustomJSONData::CustomSaveDataInfo::BasicCustomDifficultyBeatmapDetails>> details =
+			info->get().TryGetCharacteristicAndDifficulty(self->beatmapKey.beatmapCharacteristic->serializedName, self->beatmapKey.difficulty);
+		if(!details.has_value()) {
+			logger.warn("TryGetCharacteristicAndDifficulty() failed");
+			return false;
+		}
+		for(const std::string &req : details->get().requirements)
+			for(const std::string_view name : requirementNames)
+				if(req == name)
+					return true;
+		return false;
+	}();
+	logger.info("Should activate: {}", active);
 	return GameplayCoreSceneSetupData_LoadTransformedBeatmapDataAsync(self);
 }
 
-MAKE_HOOK_MATCH(GameplayCoreSceneSetupData_LoadTransformedBeatmapData, &GlobalNamespace::GameplayCoreSceneSetupData::LoadTransformedBeatmapData, void, GlobalNamespace::GameplayCoreSceneSetupData *const self) {
+MAKE_HOOK_MATCH(GameplayCoreSceneSetupData_LoadTransformedBeatmapData, &GlobalNamespace::GameplayCoreSceneSetupData::LoadTransformedBeatmapData,
+		void, GlobalNamespace::GameplayCoreSceneSetupData *const self) {
 	active = false;
-	logger.info("ShouldActivate(): sync");
+	logger.info("Should activate: sync load");
 	GameplayCoreSceneSetupData_LoadTransformedBeatmapData(self);
 }
 
-/* PC version hooks */
-
-static inline float SpawnRotationForEventValue(float orig, int32_t index) {
-	if(index >= 1000 && index <= 1720)
-		return static_cast<float>(index - 1360);
-	return orig;
+[[clang::no_destroy]] thread_local static std::function<void(GlobalNamespace::BeatmapObjectData*)> restoreHook =
+	[](GlobalNamespace::BeatmapObjectData*) {};
+MAKE_HOOK_MATCH(BeatmapData_AddBeatmapObjectData, &GlobalNamespace::BeatmapData::AddBeatmapObjectData, void, GlobalNamespace::BeatmapData *const self, GlobalNamespace::BeatmapObjectData *const beatmapObjectData) {
+	restoreHook(beatmapObjectData);
+	BeatmapData_AddBeatmapObjectData(self, beatmapObjectData);
 }
 
-static inline int32_t GetHeightForObstacleType(const int32_t orig, const int32_t obstacleType) {
-	if(obstacleType < 1000 || obstacleType > 4005000)
-		return orig;
-	return ((obstacleType >= 4001 && obstacleType <= 4100000) ? (obstacleType - 4001) / 1000 : obstacleType - 1000) * 5 + 1000;
-}
+template<class TData> struct LayerCache {
+	template<class> struct RestoreData;
+	template<> struct RestoreData<GlobalNamespace::NoteData> {
+		GlobalNamespace::NoteLineLayer noteLineLayer;
+		GlobalNamespace::NoteCutDirection cutDirection;
+		RestoreData(BeatmapSaveDataVersion2_6_0AndEarlier::NoteData *const from) : noteLineLayer(from->get_lineLayer().value__), cutDirection(from->get_cutDirection().value__) {}
+		RestoreData(BeatmapSaveDataVersion3::ColorNoteData *const from) : noteLineLayer(from->get_layer()), cutDirection(from->get_cutDirection().value__) {}
+		RestoreData(BeatmapSaveDataVersion3::BombNoteData *const from) : noteLineLayer(from->get_layer()), cutDirection(0) {}
+		void apply(GlobalNamespace::NoteData *const data) {
+			data->noteLineLayer = this->noteLineLayer;
+			data->cutDirection = this->cutDirection;
+		}
+	};
+	template<> struct RestoreData<GlobalNamespace::ObstacleData> {
+		GlobalNamespace::NoteLineLayer lineLayer;
+		int32_t height;
+		RestoreData(BeatmapSaveDataVersion2_6_0AndEarlier::ObstacleData *const from) : lineLayer(0), height(0) {
+			const int32_t type = from->get_type().value__;
+			if(type < 1000 || type > 4005000)
+				return;
+			const bool preciseStart = (type >= 4001);
+			this->lineLayer = preciseStart * ((type - 4001) % 1000) * 5000 / 750 + 1334;
+			this->height = (preciseStart ? (type - 4001) / 1000 : type - 1000) * 5 + 1000;
+		}
+		RestoreData(BeatmapSaveDataVersion3::ObstacleData *const from) : lineLayer(from->get_layer()), height(0) {}
+		void apply(GlobalNamespace::ObstacleData *const data) {
+			if(this->lineLayer.value__ != 0)
+				data->lineLayer = this->lineLayer;
+			if(this->height != 0)
+				data->height = this->height;
+		}
+	};
+	template<> struct RestoreData<GlobalNamespace::SliderData> {
+		GlobalNamespace::NoteLineLayer headLineLayer, tailLineLayer;
+		RestoreData(BeatmapSaveDataVersion2_6_0AndEarlier::SliderData *const from) : headLineLayer(from->get_headLineLayer().value__), tailLineLayer(from->get_tailLineLayer().value__) {}
+		RestoreData(BeatmapSaveDataVersion3::SliderData *const from) : headLineLayer(from->get_headLayer()), tailLineLayer(from->get_tailLayer()) {}
+		RestoreData(BeatmapSaveDataVersion3::BurstSliderData *const from) : headLineLayer(from->get_headLayer()), tailLineLayer(from->get_tailLayer()) {}
+		void apply(GlobalNamespace::SliderData *const data) {
+			data->headLineLayer = this->headLineLayer;
+			data->headBeforeJumpLineLayer = this->headLineLayer;
+			data->tailLineLayer = this->tailLineLayer;
+			data->tailBeforeJumpLineLayer = this->tailLineLayer;
+		}
+	};
+	template<> struct RestoreData<GlobalNamespace::WaypointData> {
+		GlobalNamespace::NoteLineLayer lineLayer;
+		RestoreData(BeatmapSaveDataVersion2_6_0AndEarlier::WaypointData *const from) : lineLayer(from->get_lineLayer().value__) {}
+		RestoreData(BeatmapSaveDataVersion3::WaypointData *const from) : lineLayer(from->get_layer()) {}
+		void apply(GlobalNamespace::WaypointData *const data) {
+			data->lineLayer = this->lineLayer;
+		}
+	};
 
-static inline GlobalNamespace::NoteLineLayer GetLayerForObstacleType(const GlobalNamespace::NoteLineLayer orig, const int32_t obstacleType) {
-	if(obstacleType < 1000 || obstacleType > 4005000)
-		return orig;
-	const int32_t startHeight = (obstacleType >= 4001 && obstacleType <= 4100000) ? (obstacleType - 4001) % 1000 : 0;
-	return static_cast<int32_t>(static_cast<float>(startHeight) * (20.f / 3)) + 1334;
-}
+	using TIdent = std::array<uint8_t, sizeof(TData) - sizeof(System::Object)>;
+	static inline TIdent ident(const TData *const data) {
+		TIdent out;
+		const std::span view = std::span(reinterpret_cast<const uint8_t*>(data), sizeof(*data)).subspan(sizeof(*data) - out.size());
+		std::copy(view.begin(), view.end(), out.data());
+		return out;
+	}
 
-#include "conversions.hpp"
-MAKE_HOOK_MATCH(BeatmapDataLoaderVersion2_6_0AndEarlier_BeatmapDataLoader_GetBeatmapDataFromSaveData, &BeatmapDataLoaderVersion2_6_0AndEarlier::BeatmapDataLoader::GetBeatmapDataFromSaveData, GlobalNamespace::BeatmapData*, BeatmapSaveDataVersion2_6_0AndEarlier::BeatmapSaveData *const beatmapSaveData, BeatmapSaveDataVersion4::LightshowSaveData *const defaultLightshowSaveData, const GlobalNamespace::BeatmapDifficulty beatmapDifficulty, const float startBpm, const bool loadingForDesignatedEnvironment, GlobalNamespace::EnvironmentKeywords *const environmentKeywords, GlobalNamespace::IEnvironmentLightGroups *const environmentLightGroups, GlobalNamespace::PlayerSpecificSettings *const playerSpecificSettings) {
+	std::vector<std::pair<TIdent, RestoreData<TData>>> cache;
+	std::vector<bool> matched;
+	size_t head = 0, failCount = 0;
+
+	LayerCache(const LayerCache&) = delete;
+	template<class TFrom, class TConverter> LayerCache(System::Collections::Generic::List_1<TFrom*> *const list, SafePtr<TConverter> converter) :
+			matched(static_cast<uint32_t>(list->get_Count())) {
+		il2cpp_utils::cast<GlobalNamespace::BpmTimeProcessor>(converter.ptr()->_bpmTimeProcessor)->Reset();
+		converter.ptr()->_rotationTimeProcessor->Reset();
+		this->cache.reserve(matched.size());
+		for(int32_t i = 0; i < static_cast<int32_t>(matched.size()); ++i) {
+			TFrom *const item = list->get_Item(i);
+			if(const std::optional<TData*> data = il2cpp_utils::try_cast<TData>(converter->Convert(item)))
+				cache.emplace_back(ident(*data), RestoreData<TData>(item));
+		}
+	}
+
+	bool restore(TData *const data) {
+		for(size_t i = head; i < cache.size(); ++i) {
+			if(matched[i] || cache[i].first != ident(data))
+				continue;
+			matched[i] = true;
+			if(i == head) {
+				do {
+					++head;
+				} while(head < cache.size() && matched[head]);
+			}
+			cache[i].second.apply(data);
+			return true;
+		}
+		++failCount;
+		return false;
+	}
+};
+
+MAKE_HOOK_MATCH(BeatmapDataLoaderVersion2_6_0AndEarlier_BeatmapDataLoader_GetBeatmapDataFromSaveData,
+		&BeatmapDataLoaderVersion2_6_0AndEarlier::BeatmapDataLoader::GetBeatmapDataFromSaveData, GlobalNamespace::BeatmapData*,
+		BeatmapSaveDataVersion2_6_0AndEarlier::BeatmapSaveData *const beatmapSaveData, BeatmapSaveDataVersion4::LightshowSaveData *const defaultLightshowSaveData,
+		const GlobalNamespace::BeatmapDifficulty beatmapDifficulty, const float startBpm, const bool loadingForDesignatedEnvironment,
+		GlobalNamespace::EnvironmentKeywords *const environmentKeywords, GlobalNamespace::IEnvironmentLightGroups *const environmentLightGroups,
+		GlobalNamespace::PlayerSpecificSettings *const playerSpecificSettings, GlobalNamespace::IBeatmapLightEventConverter *const lightEventConverter) {
 	if(!active)
 		return BeatmapDataLoaderVersion2_6_0AndEarlier_BeatmapDataLoader_GetBeatmapDataFromSaveData(beatmapSaveData, defaultLightshowSaveData,
-			beatmapDifficulty, startBpm, loadingForDesignatedEnvironment, environmentKeywords, environmentLightGroups, playerSpecificSettings);
-	System::Collections::Generic::List_1<BeatmapSaveDataVersion2_6_0AndEarlier::EventData*> *const events = beatmapSaveData->get_events();
-	const std::vector<GlobalNamespace::BpmTimeProcessor::BpmChangeData> bpmChanges = ConvertBpmChanges(startBpm, events);
-	LayerCache noteCache(beatmapSaveData->get_notes(), &bpmChanges);
-	LayerCache obstacleCache(beatmapSaveData->get_obstacles(), &bpmChanges);
-	LayerCache sliderCache(beatmapSaveData->get_sliders(), &bpmChanges);
-	LayerCache waypointCache(beatmapSaveData->get_waypoints(), &bpmChanges);
-	LayerCache rotationCache(events, &bpmChanges, +[](BeatmapSaveDataVersion2_6_0AndEarlier::EventData *const event) {
-		const BeatmapSaveDataCommon::BeatmapEventType type = event->get_type();
-		return type == BeatmapSaveDataCommon::BeatmapEventType::Event14 || type == BeatmapSaveDataCommon::BeatmapEventType::Event15;
-	});
-	logger.info("Restoring {} notes, {} obstacles, {} sliders, {} waypoints, and {} rotation events",
-		noteCache.cache.size(), obstacleCache.cache.size(), sliderCache.cache.size(), waypointCache.cache.size(), rotationCache.cache.size());
+			beatmapDifficulty, startBpm, loadingForDesignatedEnvironment, environmentKeywords, environmentLightGroups, playerSpecificSettings, lightEventConverter);
+	SafePtr<GlobalNamespace::BpmTimeProcessor> bpmState =
+		GlobalNamespace::BpmTimeProcessor::New_ctor(startBpm, beatmapSaveData->get_events()->i___System__Collections__Generic__IReadOnlyList_1_T_());
+	SafePtr<GlobalNamespace::RotationTimeProcessor> rotationState = // TODO: override rotations array
+		GlobalNamespace::RotationTimeProcessor::New_ctor(beatmapSaveData->get_events()->i___System__Collections__Generic__IReadOnlyList_1_T_());
+	LayerCache<GlobalNamespace::NoteData> noteCache(beatmapSaveData->get_notes(),
+		SafePtr(BeatmapDataLoaderVersion2_6_0AndEarlier::BeatmapDataLoader::ColorNoteConverter::New_ctor(bpmState.ptr()->i___GlobalNamespace__IBeatToTimeConverter(), rotationState.ptr())));
+	LayerCache<GlobalNamespace::ObstacleData> obstacleCache(beatmapSaveData->get_obstacles(),
+		SafePtr(BeatmapDataLoaderVersion2_6_0AndEarlier::BeatmapDataLoader::ObstacleConverter::New_ctor(bpmState.ptr()->i___GlobalNamespace__IBeatToTimeConverter(), rotationState.ptr())));
+	LayerCache<GlobalNamespace::SliderData> sliderCache(beatmapSaveData->get_sliders(),
+		SafePtr(BeatmapDataLoaderVersion2_6_0AndEarlier::BeatmapDataLoader::SliderConverter::New_ctor(bpmState.ptr()->i___GlobalNamespace__IBeatToTimeConverter(), rotationState.ptr())));
+	LayerCache<GlobalNamespace::WaypointData> waypointCache(beatmapSaveData->get_waypoints(),
+		SafePtr(BeatmapDataLoaderVersion2_6_0AndEarlier::BeatmapDataLoader::WaypointConverter::New_ctor(bpmState.ptr()->i___GlobalNamespace__IBeatToTimeConverter(), rotationState.ptr())));
+	logger.info("Restoring {} notes, {} obstacles, {} sliders, and {} waypoints",
+		noteCache.cache.size(), obstacleCache.cache.size(), sliderCache.cache.size(), waypointCache.cache.size());
+	restoreHook = [&](GlobalNamespace::BeatmapObjectData *const object) {
+		if(GlobalNamespace::NoteData *const data = il2cpp_utils::try_cast<GlobalNamespace::NoteData>(object).value_or(nullptr))
+			noteCache.restore(data);
+		else if(GlobalNamespace::ObstacleData *const obstacleData = il2cpp_utils::try_cast<GlobalNamespace::ObstacleData>(object).value_or(nullptr))
+			obstacleCache.restore(obstacleData);
+		else if(GlobalNamespace::SliderData *const sliderData = il2cpp_utils::try_cast<GlobalNamespace::SliderData>(object).value_or(nullptr))
+			sliderCache.restore(sliderData);
+		else if(GlobalNamespace::WaypointData *const waypointData = il2cpp_utils::try_cast<GlobalNamespace::WaypointData>(object).value_or(nullptr))
+			waypointCache.restore(waypointData);
+	};
 	SafePtr<GlobalNamespace::BeatmapData> result = BeatmapDataLoaderVersion2_6_0AndEarlier_BeatmapDataLoader_GetBeatmapDataFromSaveData(
 		beatmapSaveData, defaultLightshowSaveData, beatmapDifficulty, startBpm, loadingForDesignatedEnvironment,
-		environmentKeywords, environmentLightGroups, playerSpecificSettings);
-	for(System::Collections::Generic::LinkedListNode_1<GlobalNamespace::BeatmapDataItem*> *iter = result->get_allBeatmapDataItems()->head, *const end = iter ? iter->prev : nullptr; iter; iter = iter->next) {
-		GlobalNamespace::BeatmapDataItem *const item = iter->item;
-		if(GlobalNamespace::NoteData *const data = il2cpp_utils::try_cast<GlobalNamespace::NoteData>(item).value_or(nullptr)) {
-			if(const auto value = noteCache.restore(data)) {
-				data->noteLineLayer = value->lineLayer.value__;
-				data->cutDirection = value->cutDirection.value__;
-			}
-		} else if(GlobalNamespace::ObstacleData *const obstacleData = il2cpp_utils::try_cast<GlobalNamespace::ObstacleData>(item).value_or(nullptr)) {
-			if(const std::optional<BeatmapSaveDataVersion2_6_0AndEarlier::ObstacleType> type = obstacleCache.restore(obstacleData)) {
-				obstacleData->lineLayer = GetLayerForObstacleType(obstacleData->lineLayer, type->value__);
-				obstacleData->height = GetHeightForObstacleType(obstacleData->height, type->value__);
-			}
-		} else if(GlobalNamespace::SliderData *const sliderData = il2cpp_utils::try_cast<GlobalNamespace::SliderData>(item).value_or(nullptr)) {
-			if(const auto layers = sliderCache.restore(sliderData)) {
-				sliderData->headLineLayer = layers->headLayer.value__;
-				sliderData->headBeforeJumpLineLayer = layers->headLayer.value__;
-				sliderData->tailLineLayer = layers->tailLayer.value__;
-				sliderData->tailBeforeJumpLineLayer = layers->tailLayer.value__;
-			}
-		} else if(GlobalNamespace::WaypointData *const waypointData = il2cpp_utils::try_cast<GlobalNamespace::WaypointData>(item).value_or(nullptr)) {
-			if(const std::optional<BeatmapSaveDataCommon::NoteLineLayer> lineLayer = waypointCache.restore(waypointData))
-				waypointData->lineLayer = lineLayer->value__;
-		} else if(GlobalNamespace::SpawnRotationBeatmapEventData *const rotationData = il2cpp_utils::try_cast<GlobalNamespace::SpawnRotationBeatmapEventData>(item).value_or(nullptr)) {
-			if(const std::optional<int32_t> rotation = rotationCache.restore(rotationData))
-				rotationData->_deltaRotation = SpawnRotationForEventValue(rotationData->_deltaRotation, *rotation);
-		}
-		if(iter == end)
-			break;
+		environmentKeywords, environmentLightGroups, playerSpecificSettings, lightEventConverter);
+	restoreHook = [](GlobalNamespace::BeatmapObjectData*) {};
+	if(noteCache.failCount || obstacleCache.failCount || sliderCache.failCount || waypointCache.failCount) {
+		logger.error("Failed to restore {} notes, {} obstacles, {} sliders, and {} waypoints",
+			noteCache.failCount, obstacleCache.failCount, sliderCache.failCount, waypointCache.failCount);
+		return nullptr;
 	}
-	if(noteCache.failCount || obstacleCache.failCount || sliderCache.failCount || waypointCache.failCount)
-		logger.warn("Failed to restore {} notes, {} obstacles, {} sliders, {} waypoints, and {} rotation events",
-			noteCache.failCount, obstacleCache.failCount, sliderCache.failCount, waypointCache.failCount, rotationCache.failCount);
 	return result.ptr();
 }
 
-MAKE_HOOK_MATCH(BeatmapDataLoaderVersion3_BeatmapDataLoader_GetBeatmapDataFromSaveData, &BeatmapDataLoaderVersion3::BeatmapDataLoader::GetBeatmapDataFromSaveData, GlobalNamespace::BeatmapData*, BeatmapSaveDataVersion3::BeatmapSaveData *const beatmapSaveData, BeatmapSaveDataVersion4::LightshowSaveData *const defaultLightshowSaveData, GlobalNamespace::BeatmapDifficulty beatmapDifficulty, const float startBpm, bool loadingForDesignatedEnvironment, GlobalNamespace::EnvironmentKeywords *const environmentKeywords, GlobalNamespace::IEnvironmentLightGroups *const environmentLightGroups, GlobalNamespace::PlayerSpecificSettings *const playerSpecificSettings, System::Diagnostics::Stopwatch *const stopwatch) {
+MAKE_HOOK_MATCH(BeatmapDataLoaderVersion3_BeatmapDataLoader_GetBeatmapDataFromSaveData, &BeatmapDataLoaderVersion3::BeatmapDataLoader::GetBeatmapDataFromSaveData,
+		GlobalNamespace::BeatmapData*, BeatmapSaveDataVersion3::BeatmapSaveData *const beatmapSaveData, BeatmapSaveDataVersion4::LightshowSaveData *const defaultLightshowSaveData,
+		const GlobalNamespace::BeatmapDifficulty beatmapDifficulty, const float startBpm, const bool loadingForDesignatedEnvironment,
+		GlobalNamespace::EnvironmentKeywords *const environmentKeywords, GlobalNamespace::IEnvironmentLightGroups *const environmentLightGroups,
+		GlobalNamespace::PlayerSpecificSettings *const playerSpecificSettings, GlobalNamespace::IBeatmapLightEventConverter *const lightEventConverter,
+		System::Diagnostics::Stopwatch *const stopwatch) {
 	if(!active)
 		return BeatmapDataLoaderVersion3_BeatmapDataLoader_GetBeatmapDataFromSaveData(beatmapSaveData, defaultLightshowSaveData, beatmapDifficulty,
-			startBpm, loadingForDesignatedEnvironment, environmentKeywords, environmentLightGroups, playerSpecificSettings, stopwatch);
-	const std::vector<GlobalNamespace::BpmTimeProcessor::BpmChangeData> bpmChanges = ConvertBpmChanges(startBpm, beatmapSaveData->bpmEvents);
-	LayerCache bombCache(beatmapSaveData->__cordl_internal_get_bombNotes(), &bpmChanges);
-	LayerCache noteCache(beatmapSaveData->__cordl_internal_get_colorNotes(), &bpmChanges);
-	LayerCache obstacleCache(beatmapSaveData->__cordl_internal_get_obstacles(), &bpmChanges);
-	LayerCache burstCache(beatmapSaveData->__cordl_internal_get_burstSliders(), &bpmChanges);
-	LayerCache sliderCache(beatmapSaveData->__cordl_internal_get_sliders(), &bpmChanges);
-	LayerCache waypointCache(beatmapSaveData->__cordl_internal_get_waypoints(), &bpmChanges);
+			startBpm, loadingForDesignatedEnvironment, environmentKeywords, environmentLightGroups, playerSpecificSettings, lightEventConverter, stopwatch);
+	SafePtr<GlobalNamespace::BpmTimeProcessor> bpmState =
+		GlobalNamespace::BpmTimeProcessor::New_ctor(startBpm, beatmapSaveData->bpmEvents->i___System__Collections__Generic__IReadOnlyList_1_T_());
+	SafePtr<GlobalNamespace::RotationTimeProcessor> rotationState =
+		GlobalNamespace::RotationTimeProcessor::New_ctor(beatmapSaveData->rotationEvents->i___System__Collections__Generic__IReadOnlyList_1_T_());
+	LayerCache<GlobalNamespace::NoteData> bombCache(beatmapSaveData->bombNotes,
+		SafePtr(BeatmapDataLoaderVersion3::BeatmapDataLoader::BombNoteConverter::New_ctor(bpmState.ptr(), rotationState.ptr())));
+	LayerCache<GlobalNamespace::NoteData> noteCache(beatmapSaveData->colorNotes,
+		SafePtr(BeatmapDataLoaderVersion3::BeatmapDataLoader::ColorNoteConverter::New_ctor(bpmState.ptr(), rotationState.ptr())));
+	LayerCache<GlobalNamespace::ObstacleData> obstacleCache(beatmapSaveData->obstacles,
+		SafePtr(BeatmapDataLoaderVersion3::BeatmapDataLoader::ObstacleConverter::New_ctor(bpmState.ptr(), rotationState.ptr())));
+	LayerCache<GlobalNamespace::SliderData> burstCache(beatmapSaveData->burstSliders,
+		SafePtr(BeatmapDataLoaderVersion3::BeatmapDataLoader::BurstSliderConverter::New_ctor(bpmState.ptr(), rotationState.ptr())));
+	LayerCache<GlobalNamespace::SliderData> sliderCache(beatmapSaveData->sliders,
+		SafePtr(BeatmapDataLoaderVersion3::BeatmapDataLoader::SliderConverter::New_ctor(bpmState.ptr(), rotationState.ptr())));
+	LayerCache<GlobalNamespace::WaypointData> waypointCache(beatmapSaveData->waypoints,
+		SafePtr(BeatmapDataLoaderVersion3::BeatmapDataLoader::WaypointConverter::New_ctor(bpmState.ptr(), rotationState.ptr())));
 	logger.info("Restoring {} notes, {} bombs, {} obstacles, {} sliders, {} burst sliders, and {} waypoints",
 		noteCache.cache.size(), bombCache.cache.size(), obstacleCache.cache.size(), sliderCache.cache.size(), burstCache.cache.size(), waypointCache.cache.size());
+	restoreHook = [&](GlobalNamespace::BeatmapObjectData *const object) {
+		if(GlobalNamespace::NoteData *const data = il2cpp_utils::try_cast<GlobalNamespace::NoteData>(object).value_or(nullptr)) {
+			if(data->gameplayType == GlobalNamespace::NoteData::GameplayType::Bomb)
+				bombCache.restore(data);
+			else
+				noteCache.restore(data);
+		} else if(GlobalNamespace::ObstacleData *const obstacleData = il2cpp_utils::try_cast<GlobalNamespace::ObstacleData>(object).value_or(nullptr)) {
+			obstacleCache.restore(obstacleData);
+		} else if(GlobalNamespace::SliderData *const sliderData = il2cpp_utils::try_cast<GlobalNamespace::SliderData>(object).value_or(nullptr)) {
+			if(sliderData->sliderType == GlobalNamespace::SliderData::Type::Burst)
+				burstCache.restore(sliderData);
+			else
+				sliderCache.restore(sliderData);
+		} else if(GlobalNamespace::WaypointData *const waypointData = il2cpp_utils::try_cast<GlobalNamespace::WaypointData>(object).value_or(nullptr)) {
+			waypointCache.restore(waypointData);
+		}
+	};
 	SafePtr<GlobalNamespace::BeatmapData> result = BeatmapDataLoaderVersion3_BeatmapDataLoader_GetBeatmapDataFromSaveData(
 		beatmapSaveData, defaultLightshowSaveData, beatmapDifficulty, startBpm, loadingForDesignatedEnvironment,
-		environmentKeywords, environmentLightGroups, playerSpecificSettings, stopwatch);
-	for(System::Collections::Generic::LinkedListNode_1<GlobalNamespace::BeatmapDataItem*> *iter = result->get_allBeatmapDataItems()->head, *const end = iter ? iter->prev : nullptr; iter; iter = iter->next) {
-		GlobalNamespace::BeatmapDataItem *const item = iter->item;
-		if(GlobalNamespace::NoteData *const data = il2cpp_utils::try_cast<GlobalNamespace::NoteData>(item).value_or(nullptr); data) {
-			if(data->gameplayType == GlobalNamespace::NoteData::GameplayType::Bomb) {
-				if(const std::optional<int32_t> lineLayer = bombCache.restore(data))
-					data->noteLineLayer = *lineLayer;
-			} else if(const auto value = noteCache.restore(data)) {
-				data->noteLineLayer = value->layer.value__;
-				data->cutDirection = value->cutDirection.value__;
-			}
-		} else if(GlobalNamespace::ObstacleData *const obstacleData = il2cpp_utils::try_cast<GlobalNamespace::ObstacleData>(item).value_or(nullptr)) {
-			if(const std::optional<int32_t> lineLayer = obstacleCache.restore(obstacleData))
-				obstacleData->lineLayer = *lineLayer;
-		} else if(GlobalNamespace::SliderData *const sliderData = il2cpp_utils::try_cast<GlobalNamespace::SliderData>(item).value_or(nullptr)) {
-			if(const auto layers = (sliderData->sliderType == GlobalNamespace::SliderData::Type::Burst) ? burstCache.restore(sliderData) : sliderCache.restore(sliderData)) {
-				sliderData->headLineLayer = layers->headLayer.value__;
-				sliderData->headBeforeJumpLineLayer = layers->headLayer.value__;
-				sliderData->tailLineLayer = layers->tailLayer.value__;
-				sliderData->tailBeforeJumpLineLayer = layers->tailLayer.value__;
-			}
-		} else if(GlobalNamespace::WaypointData *const waypointData = il2cpp_utils::try_cast<GlobalNamespace::WaypointData>(item).value_or(nullptr)) {
-			if(const std::optional<BeatmapSaveDataCommon::NoteLineLayer> lineLayer = waypointCache.restore(waypointData))
-				waypointData->lineLayer = lineLayer->value__;
-		}
-		if(iter == end)
-			break;
-	}
-	if(noteCache.failCount || bombCache.failCount || obstacleCache.failCount || sliderCache.failCount || burstCache.failCount || waypointCache.failCount)
-		logger.warn("Failed to restore {} notes, {} bombs, {} obstacles, {} sliders, {} burst sliders, and {} waypoints",
+		environmentKeywords, environmentLightGroups, playerSpecificSettings, lightEventConverter, stopwatch);
+	restoreHook = [](GlobalNamespace::BeatmapObjectData*) {};
+	if(noteCache.failCount || bombCache.failCount || obstacleCache.failCount || sliderCache.failCount || burstCache.failCount || waypointCache.failCount) {
+		logger.error("Failed to restore {} notes, {} bombs, {} obstacles, {} sliders, {} burst sliders, and {} waypoints",
 			noteCache.failCount, bombCache.failCount, obstacleCache.failCount, sliderCache.failCount, burstCache.failCount, waypointCache.failCount);
+		return nullptr;
+	}
 	return result.ptr();
 }
 
-MAKE_HOOK_MATCH(BeatmapObjectsInTimeRowProcessor_HandleCurrentTimeSliceAllNotesAndSlidersDidFinishTimeSlice, &GlobalNamespace::BeatmapObjectsInTimeRowProcessor::HandleCurrentTimeSliceAllNotesAndSlidersDidFinishTimeSlice, void, GlobalNamespace::BeatmapObjectsInTimeRowProcessor *const self, GlobalNamespace::BeatmapObjectsInTimeRowProcessor::TimeSliceContainer_1<GlobalNamespace::BeatmapDataItem*>* allObjectsTimeSlice, float nextTimeSliceTime) {
+MAKE_HOOK_MATCH(BeatmapObjectsInTimeRowProcessor_HandleCurrentTimeSliceAllNotesAndSlidersDidFinishTimeSlice,
+		&GlobalNamespace::BeatmapObjectsInTimeRowProcessor::HandleCurrentTimeSliceAllNotesAndSlidersDidFinishTimeSlice, void,
+		GlobalNamespace::BeatmapObjectsInTimeRowProcessor *const self,
+		GlobalNamespace::BeatmapObjectsInTimeRowProcessor::TimeSliceContainer_1<GlobalNamespace::BeatmapDataItem*>* allObjectsTimeSlice, float nextTimeSliceTime) {
+	std::unordered_map<int32_t, std::vector<GlobalNamespace::NoteData*>> columns = {};
+	System::Collections::Generic::IReadOnlyList_1<GlobalNamespace::BeatmapDataItem*> *const items = allObjectsTimeSlice->items;
+	for(int32_t i = 0, itemCount = items->i___System__Collections__Generic__IReadOnlyCollection_1_T_()->Count; i < itemCount; ++i) {
+		if(GlobalNamespace::NoteData *const note = il2cpp_utils::try_cast<GlobalNamespace::NoteData>(items->get_Item(i)).value_or(nullptr)) {
+			std::vector<GlobalNamespace::NoteData*> *const column = &columns.try_emplace(note->lineIndex).first->second;
+			column->insert(std::find_if(column->begin(), column->end(), [lineLayer = note->noteLineLayer](GlobalNamespace::NoteData *const e) {
+				return e->noteLineLayer > lineLayer;
+			}), note);
+			note->lineIndex = std::clamp(note->lineIndex, 0, 3);
+		}
+	}
 	BeatmapObjectsInTimeRowProcessor_HandleCurrentTimeSliceAllNotesAndSlidersDidFinishTimeSlice(self, allObjectsTimeSlice, nextTimeSliceTime);
-	if(!active)
-		return;
-	System::Collections::Generic::IReadOnlyList_1<GlobalNamespace::BeatmapDataItem*> *const items = allObjectsTimeSlice->get_items();
-	const uint32_t itemCount = static_cast<uint32_t>(
-		reinterpret_cast<System::Collections::Generic::IReadOnlyCollection_1<GlobalNamespace::BeatmapDataItem*>*>(items)->get_Count());
-
-	std::unordered_map<int32_t, std::vector<GlobalNamespace::NoteData*>> notesInColumnsProcessingDictionaryOfLists;
-	for(uint32_t i = 0; i < itemCount; ++i) {
-		GlobalNamespace::NoteData *const note = il2cpp_utils::try_cast<GlobalNamespace::NoteData>(items->get_Item(static_cast<int32_t>(i))).value_or(nullptr);
-		if(!note)
-			continue;
-		std::vector<GlobalNamespace::NoteData*> *const list = &notesInColumnsProcessingDictionaryOfLists.try_emplace(note->lineIndex).first->second;
-		GlobalNamespace::NoteLineLayer lineLayer = note->noteLineLayer;
-		std::vector<GlobalNamespace::NoteData*>::const_iterator pos = std::find_if(list->begin(), list->end(), [lineLayer](GlobalNamespace::NoteData *const e) {
-			return e->noteLineLayer > lineLayer;
-		});
-		list->insert(pos, note);
-	}
-	for(std::pair<const int32_t, std::vector<GlobalNamespace::NoteData*>> &list : notesInColumnsProcessingDictionaryOfLists)
-		for(uint32_t i = 0; i < static_cast<uint32_t>(list.second.size()); ++i)
-			list.second[i]->SetBeforeJumpNoteLineLayer(static_cast<int32_t>(i));
-	for(uint32_t i = 0; i < itemCount; ++i) {
-		GlobalNamespace::SliderData *const slider = il2cpp_utils::try_cast<GlobalNamespace::SliderData>(items->get_Item(static_cast<int32_t>(i))).value_or(nullptr);
-		if(!slider)
-			continue;
-		for(uint32_t j = 0; j < itemCount; ++j) {
-			GlobalNamespace::NoteData *const note = il2cpp_utils::try_cast<GlobalNamespace::NoteData>(items->get_Item(static_cast<int32_t>(j))).value_or(nullptr);
-			if(!note)
-				continue;
-			if(!GlobalNamespace::BeatmapObjectsInTimeRowProcessor::SliderHeadPositionOverlapsWithNote(slider, note))
-				continue;
-			slider->SetHeadBeforeJumpLineLayer(note->beforeJumpNoteLineLayer);
-		}
-	}
-	for(uint32_t i = 0; i < itemCount; ++i) {
-		GlobalNamespace::SliderData *const slider = il2cpp_utils::try_cast<GlobalNamespace::SliderData>(items->get_Item(static_cast<int32_t>(i))).value_or(nullptr);
-		if(!slider)
-			continue;
-		for(uint32_t j = 0; j < itemCount; ++j) {
-			GlobalNamespace::SliderData *const otherSlider = il2cpp_utils::try_cast<GlobalNamespace::SliderData>(items->get_Item(static_cast<int32_t>(j))).value_or(nullptr);
-			if(!otherSlider)
-				continue;
-			if(slider != otherSlider && GlobalNamespace::BeatmapObjectsInTimeRowProcessor::SliderHeadPositionOverlapsWithBurstTail(slider, otherSlider))
-				slider->SetHeadBeforeJumpLineLayer(otherSlider->tailBeforeJumpLineLayer);
-		}
-		for(uint32_t j = 0; j < itemCount; ++j) {
-			GlobalNamespace::BeatmapObjectsInTimeRowProcessor::SliderTailData *const tailData = il2cpp_utils::try_cast<GlobalNamespace::BeatmapObjectsInTimeRowProcessor::SliderTailData>(items->get_Item(static_cast<int32_t>(j))).value_or(nullptr);
-			if(!tailData)
-				continue;
-			if(GlobalNamespace::BeatmapObjectsInTimeRowProcessor::SliderHeadPositionOverlapsWithBurstTail(slider, tailData->slider))
-				slider->SetHeadBeforeJumpLineLayer(tailData->slider->tailBeforeJumpLineLayer);
-		}
-	}
-	for(uint32_t i = 0; i < itemCount; ++i) {
-		GlobalNamespace::BeatmapObjectsInTimeRowProcessor::SliderTailData *const tailData = il2cpp_utils::try_cast<GlobalNamespace::BeatmapObjectsInTimeRowProcessor::SliderTailData>(items->get_Item(static_cast<int32_t>(i))).value_or(nullptr);
-		if(!tailData)
-			continue;
-		GlobalNamespace::SliderData *const slider = tailData->slider;
-		for(uint32_t j = 0; j < itemCount; ++j) {
-			GlobalNamespace::NoteData *const note = il2cpp_utils::try_cast<GlobalNamespace::NoteData>(items->get_Item(static_cast<int32_t>(j))).value_or(nullptr);
-			if(!note)
-				continue;
-			if(GlobalNamespace::BeatmapObjectsInTimeRowProcessor::SliderTailPositionOverlapsWithNote(slider, note))
-				slider->SetTailBeforeJumpLineLayer(note->beforeJumpNoteLineLayer);
+	for(const auto& [lineIndex, notes] : columns) {
+		for(uint32_t i = 0; i < notes.size(); ++i) {
+			notes[i]->SetBeforeJumpNoteLineLayer(static_cast<int32_t>(i));
+			notes[i]->lineIndex = lineIndex;
 		}
 	}
 }
 
 MAKE_HOOK_MATCH(BeatmapObjectSpawnMovementData_GetNoteOffset, &GlobalNamespace::BeatmapObjectSpawnMovementData::GetNoteOffset, UnityEngine::Vector3, GlobalNamespace::BeatmapObjectSpawnMovementData *const self, int32_t noteLineIndex, const GlobalNamespace::NoteLineLayer noteLineLayer) {
-	UnityEngine::Vector3 result = BeatmapObjectSpawnMovementData_GetNoteOffset(self, noteLineIndex, noteLineLayer);
+	const UnityEngine::Vector3 result = BeatmapObjectSpawnMovementData_GetNoteOffset(self, noteLineIndex, noteLineLayer);
 	if(!active)
 		return result;
 	if(noteLineIndex <= -1000)
@@ -300,7 +339,7 @@ MAKE_HOOK_MATCH(StaticBeatmapObjectSpawnMovementData_Get2DNoteOffset, &GlobalNam
 }
 
 MAKE_HOOK_MATCH(BeatmapObjectSpawnMovementData_GetObstacleOffset, &GlobalNamespace::BeatmapObjectSpawnMovementData::GetObstacleOffset, UnityEngine::Vector3, GlobalNamespace::BeatmapObjectSpawnMovementData *const self, int32_t noteLineIndex, GlobalNamespace::NoteLineLayer noteLineLayer) {
-	UnityEngine::Vector3 result = BeatmapObjectSpawnMovementData_GetObstacleOffset(self, noteLineIndex, noteLineLayer);
+	const UnityEngine::Vector3 result = BeatmapObjectSpawnMovementData_GetObstacleOffset(self, noteLineIndex, noteLineLayer);
 	if(!active)
 		return result;
 	if(noteLineIndex <= -1000)
@@ -326,7 +365,25 @@ MAKE_HOOK_MATCH(BeatmapObjectSpawnMovementData_HighestJumpPosYForLineLayer, &Glo
 	return result;
 }
 
-MAKE_HOOK_MATCH(NoteBasicCutInfoHelper_GetBasicCutInfo, &GlobalNamespace::NoteBasicCutInfoHelper::GetBasicCutInfo, void, UnityEngine::Transform *const noteTransform, GlobalNamespace::ColorType colorType, GlobalNamespace::NoteCutDirection cutDirection, GlobalNamespace::SaberType saberType, float saberBladeSpeed, UnityEngine::Vector3 cutDirVec, float cutAngleTolerance, ByRef<bool> directionOK, ByRef<bool> speedOK, ByRef<bool> saberTypeOK, ByRef<float> cutDirDeviation, ByRef<float> cutDirAngle) {
+MAKE_HOOK_MATCH(ColorNoteVisuals_HandleNoteControllerDidInit, &GlobalNamespace::ColorNoteVisuals::HandleNoteControllerDidInit,
+		void, GlobalNamespace::ColorNoteVisuals *const self, GlobalNamespace::NoteControllerBase *const noteController) {
+	if(active) {
+		GlobalNamespace::NoteData *const note = self->_noteController->noteData;
+		const int32_t cutDirection = note->cutDirection.value__;
+		if(cutDirection >= 2000 && cutDirection <= 2360) {
+			note->cutDirection = GlobalNamespace::NoteCutDirection::Any;
+			ColorNoteVisuals_HandleNoteControllerDidInit(self, noteController);
+			note->cutDirection = cutDirection;
+			return;
+		}
+	}
+	ColorNoteVisuals_HandleNoteControllerDidInit(self, noteController);
+}
+
+MAKE_HOOK_MATCH(NoteBasicCutInfoHelper_GetBasicCutInfo, &GlobalNamespace::NoteBasicCutInfoHelper::GetBasicCutInfo, void, UnityEngine::Transform *const noteTransform,
+		const GlobalNamespace::ColorType colorType, GlobalNamespace::NoteCutDirection cutDirection, const GlobalNamespace::SaberType saberType, const float saberBladeSpeed,
+		const UnityEngine::Vector3 cutDirVec, const float cutAngleTolerance, const ByRef<bool> directionOK, const ByRef<bool> speedOK, const ByRef<bool> saberTypeOK,
+		const ByRef<float> cutDirDeviation, const ByRef<float> cutDirAngle) {
 	if(active && cutDirection.value__ >= 2000 && cutDirection.value__ <= 2360)
 		cutDirection = GlobalNamespace::NoteCutDirection::Any;
 	NoteBasicCutInfoHelper_GetBasicCutInfo(noteTransform, colorType, cutDirection, saberType, saberBladeSpeed, cutDirVec, cutAngleTolerance, directionOK, speedOK, saberTypeOK, cutDirDeviation, cutDirAngle);
@@ -346,8 +403,24 @@ MAKE_HOOK_MATCH(NoteCutDirectionExtensions_Rotation, &GlobalNamespace::NoteCutDi
 	return result;
 }
 
-MAKE_HOOK_MATCH(NoteCutDirectionExtensions_Direction, &GlobalNamespace::NoteCutDirectionExtensions::Direction, UnityEngine::Vector2, GlobalNamespace::NoteCutDirection cutDirection) {
-	UnityEngine::Vector2 result = NoteCutDirectionExtensions_Direction(cutDirection);
+MAKE_HOOK_MATCH(NoteCutDirectionExtensions_Direction,
+		&GlobalNamespace::NoteCutDirectionExtensions::Direction, UnityEngine::Vector2, const GlobalNamespace::NoteCutDirection cutDirection) {
+	UnityEngine::Vector2 result = {};
+	if constexpr(UseOrigHooks) {
+		switch(cutDirection) {
+			case GlobalNamespace::NoteCutDirection::Left: result = UnityEngine::Vector2(-1, 0); break;
+			case GlobalNamespace::NoteCutDirection::Right: result = UnityEngine::Vector2(1, 0); break;
+			case GlobalNamespace::NoteCutDirection::Up: result = UnityEngine::Vector2(0, 1); break;
+			case GlobalNamespace::NoteCutDirection::Down: result = UnityEngine::Vector2(0, -1); break;
+			case GlobalNamespace::NoteCutDirection::UpLeft: result = UnityEngine::Vector2(-.7071f, .7071f); break;
+			case GlobalNamespace::NoteCutDirection::UpRight: result = UnityEngine::Vector2(.7071f, .7071f); break;
+			case GlobalNamespace::NoteCutDirection::DownLeft: result = UnityEngine::Vector2(-.7071f, -.7071f); break;
+			case GlobalNamespace::NoteCutDirection::DownRight: result = UnityEngine::Vector2(.7071f, -.7071f); break;
+			default:;
+		}
+	} else {
+		result = NoteCutDirectionExtensions_Direction(cutDirection);
+	}
 	if(!active)
 		return result;
 	int32_t offset = 2000;
@@ -361,8 +434,24 @@ MAKE_HOOK_MATCH(NoteCutDirectionExtensions_Direction, &GlobalNamespace::NoteCutD
 	return UnityEngine::Vector2(dir.x, dir.y);
 }
 
-MAKE_HOOK_MATCH(NoteCutDirectionExtensions_RotationAngle, &GlobalNamespace::NoteCutDirectionExtensions::RotationAngle, float, GlobalNamespace::NoteCutDirection cutDirection) {
-	const float result = NoteCutDirectionExtensions_RotationAngle(cutDirection);
+MAKE_HOOK_MATCH_NO_CATCH(NoteCutDirectionExtensions_RotationAngle,
+		&GlobalNamespace::NoteCutDirectionExtensions::RotationAngle, float, const GlobalNamespace::NoteCutDirection cutDirection) {
+	float result = 0;
+	if constexpr(UseOrigHooks) {
+		switch(cutDirection) {
+			case GlobalNamespace::NoteCutDirection::Left: result = -90; break;
+			case GlobalNamespace::NoteCutDirection::Right: result = 90; break;
+			case GlobalNamespace::NoteCutDirection::Up: result = -180; break;
+			case GlobalNamespace::NoteCutDirection::Down: result = 0; break;
+			case GlobalNamespace::NoteCutDirection::UpLeft: result = -135; break;
+			case GlobalNamespace::NoteCutDirection::UpRight: result = 135; break;
+			case GlobalNamespace::NoteCutDirection::DownLeft: result = -45; break;
+			case GlobalNamespace::NoteCutDirection::DownRight: result = 45; break;
+			default:;
+		}
+	} else {
+		result = NoteCutDirectionExtensions_RotationAngle(cutDirection);
+	}
 	if(!active)
 		return result;
 	if(cutDirection.value__ >= 1000 && cutDirection.value__ <= 1360)
@@ -402,29 +491,29 @@ MAKE_HOOK_MATCH(NoteData_Mirror, &GlobalNamespace::NoteData::Mirror, void, Globa
 		self->set_flipLineIndex(*newFlipLineIndex);
 }
 
-MAKE_HOOK_MATCH(ObstacleController_Init, &GlobalNamespace::ObstacleController::Init, void, GlobalNamespace::ObstacleController *const self, GlobalNamespace::ObstacleData *const obstacleData, float worldRotation, UnityEngine::Vector3 startPos, UnityEngine::Vector3 midPos, UnityEngine::Vector3 endPos, float move1Duration, float move2Duration, float singleLineWidth, float height) {
+MAKE_HOOK_MATCH(BeatmapObjectSpawnMovementData_GetObstacleSpawnData, &GlobalNamespace::BeatmapObjectSpawnMovementData::GetObstacleSpawnData,
+		GlobalNamespace::ObstacleSpawnData, GlobalNamespace::BeatmapObjectSpawnMovementData *const self, GlobalNamespace::ObstacleData *const obstacleData) {
+	GlobalNamespace::ObstacleSpawnData result = BeatmapObjectSpawnMovementData_GetObstacleSpawnData(self, obstacleData);
+	float obstacleWidth = static_cast<float>(obstacleData->width);
 	if(!active)
-		return ObstacleController_Init(self, obstacleData, worldRotation, startPos, midPos, endPos, move1Duration, move2Duration, singleLineWidth, height);
-	if(obstacleData->height <= -1000)
-		height = static_cast<float>(obstacleData->height + 2000) / 1000.f * GlobalNamespace::StaticBeatmapObjectSpawnMovementData::kNoteLinesDistance;
-	else if(obstacleData->height >= 1000)
-		height = static_cast<float>(obstacleData->height - 1000) / 1000.f * GlobalNamespace::StaticBeatmapObjectSpawnMovementData::kNoteLinesDistance;
-	else if(obstacleData->height > 2)
-		height = static_cast<float>(obstacleData->height) * GlobalNamespace::StaticBeatmapObjectSpawnMovementData::kNoteLinesDistance;
+		return result;
+	if(obstacleWidth <= -1000 || obstacleWidth >= 1000) {
+		result.moveOffset.x = result.moveOffset.x - (obstacleWidth * .6f - .6f) * .5f;
+		if(obstacleWidth <= -1000)
+			obstacleWidth += 2000;
+		obstacleWidth = (obstacleWidth - 1000) / 1000 * .6f;
+		result.moveOffset.x = result.moveOffset.x + (obstacleWidth - .6f) * .5f;
+		result.obstacleWidth = obstacleWidth;
+	}
 
-	int32_t oldWidth = obstacleData->width;
-	if(oldWidth <= -1000)
-		obstacleData->width = oldWidth + 1000;
-	else if(oldWidth >= 1000)
-		obstacleData->width = oldWidth - 1000;
-	else
-		return ObstacleController_Init(self, obstacleData, worldRotation, startPos, midPos, endPos, move1Duration, move2Duration, singleLineWidth, height);
-	float fix = singleLineWidth * (-999.f / 1000) * .5f;
-	midPos.x += fix;
-	endPos.x += fix;
-	ObstacleController_Init(self, obstacleData, worldRotation, startPos, midPos, endPos, move1Duration, move2Duration, singleLineWidth / 1000, height);
-	self->_startPos.x += fix;
-	obstacleData->width = oldWidth;
+	const float height = static_cast<float>(obstacleData->height), layerHeight = GlobalNamespace::StaticBeatmapObjectSpawnMovementData::get_layerHeight();
+	if(height <= -1000)
+		result.obstacleHeight = (height + 2000) / 1000 * layerHeight;
+	else if(height >= 1000)
+		result.obstacleHeight = (height - 1000) / 1000 * layerHeight;
+	else if(height > 2)
+		result.obstacleHeight = height * layerHeight;
+	return result;
 }
 
 static int32_t ToNormalizedPrecisionIndex(int32_t index) {
@@ -460,7 +549,22 @@ MAKE_HOOK_MATCH(SliderData_Mirror, &GlobalNamespace::SliderData::Mirror, void, G
 }
 
 MAKE_HOOK_MATCH(SliderMeshController_CutDirectionToControlPointPosition, &GlobalNamespace::SliderMeshController::CutDirectionToControlPointPosition, UnityEngine::Vector3, GlobalNamespace::NoteCutDirection noteCutDirection) {
-	UnityEngine::Vector3 result = SliderMeshController_CutDirectionToControlPointPosition(noteCutDirection);
+	UnityEngine::Vector3 result = {};
+	if constexpr(UseOrigHooks) {
+		switch(noteCutDirection) {
+			case GlobalNamespace::NoteCutDirection::Up: result = UnityEngine::Vector3(0, 1, -1e-05f); break;
+			case GlobalNamespace::NoteCutDirection::Down: result = UnityEngine::Vector3(0, -1, -1e-05f); break;
+			case GlobalNamespace::NoteCutDirection::Left: result = UnityEngine::Vector3(-1, 0, -1e-05f); break;
+			case GlobalNamespace::NoteCutDirection::Right: result = UnityEngine::Vector3(1, 0, -1e-05f); break;
+			case GlobalNamespace::NoteCutDirection::UpLeft: result = UnityEngine::Vector3(-.70710677f, .70710677f, -1e-05f); break;
+			case GlobalNamespace::NoteCutDirection::UpRight: result = UnityEngine::Vector3(.70710677f, .70710677f, -1e-05f); break;
+			case GlobalNamespace::NoteCutDirection::DownLeft: result = UnityEngine::Vector3(-.70710677f, -.70710677f, -1e-05f); break;
+			case GlobalNamespace::NoteCutDirection::DownRight: result = UnityEngine::Vector3(.70710677f, -.70710677f, -1e-05f); break;
+			default:;
+		}
+	} else {
+		result = SliderMeshController_CutDirectionToControlPointPosition(noteCutDirection);
+	}
 	if(!active)
 		return result;
 	if(noteCutDirection.value__ >= 1000 && noteCutDirection.value__ <= 1360) {
@@ -476,8 +580,18 @@ MAKE_HOOK_MATCH(SliderMeshController_CutDirectionToControlPointPosition, &Global
 	return result;
 }
 
-MAKE_HOOK_MATCH(StaticBeatmapObjectSpawnMovementData_LineYPosForLineLayer, &GlobalNamespace::StaticBeatmapObjectSpawnMovementData::LineYPosForLineLayer, float, GlobalNamespace::NoteLineLayer lineLayer) {
-	float result = StaticBeatmapObjectSpawnMovementData_LineYPosForLineLayer(lineLayer);
+MAKE_HOOK_MATCH_NO_CATCH(StaticBeatmapObjectSpawnMovementData_LineYPosForLineLayer,
+		&GlobalNamespace::StaticBeatmapObjectSpawnMovementData::LineYPosForLineLayer, float, const GlobalNamespace::NoteLineLayer lineLayer) {
+	float result = GlobalNamespace::StaticBeatmapObjectSpawnMovementData::kTopLinesYPos;
+	if constexpr(UseOrigHooks) {
+		switch(lineLayer) {
+			case GlobalNamespace::NoteLineLayer::Base: result = GlobalNamespace::StaticBeatmapObjectSpawnMovementData::kBaseLinesYPos; break;
+			case GlobalNamespace::NoteLineLayer::Upper: result = GlobalNamespace::StaticBeatmapObjectSpawnMovementData::kUpperLinesYPos; break;
+			default:;
+		}
+	} else {
+		result = StaticBeatmapObjectSpawnMovementData_LineYPosForLineLayer(lineLayer);
+	}
 	if(!active)
 		return result;
 	constexpr float delta = GlobalNamespace::StaticBeatmapObjectSpawnMovementData::kTopLinesYPos - GlobalNamespace::StaticBeatmapObjectSpawnMovementData::kUpperLinesYPos;
@@ -492,7 +606,7 @@ extern "C" void setup(CModInfo*);
 extern "C" [[gnu::visibility("default")]] void setup(CModInfo *const modInfo) {
 	*modInfo = {
 		.id = "MappingExtensions",
-		.version = "0.24.1",
+		.version = "0.25.0",
 		.version_long = 15,
 	};
 	logger.info("Leaving setup!");
@@ -502,35 +616,43 @@ extern "C" void late_load();
 extern "C" [[gnu::visibility("default")]] void late_load() {
 	il2cpp_functions::Init();
 
-	INSTALL_HOOK(logger, GameplayCoreSceneSetupData_LoadTransformedBeatmapDataAsync)
-	INSTALL_HOOK(logger, GameplayCoreSceneSetupData_LoadTransformedBeatmapData)
+	Hooking::InstallHook<Hook_GameplayCoreSceneSetupData_LoadTransformedBeatmapDataAsync>(logger);
+	Hooking::InstallHook<Hook_GameplayCoreSceneSetupData_LoadTransformedBeatmapData>(logger);
 	if(const std::vector<modloader::ModData> loaded = modloader::get_loaded(); std::find_if(loaded.begin(), loaded.end(), [](const modloader::ModData &data) {
-			return data.info.id == "CustomJSONData";
-		}) == loaded.end()) {
-		INSTALL_HOOK(logger, BeatmapDataLoaderVersion2_6_0AndEarlier_BeatmapDataLoader_GetBeatmapDataFromSaveData)
-		INSTALL_HOOK(logger, BeatmapDataLoaderVersion3_BeatmapDataLoader_GetBeatmapDataFromSaveData)
-		// INSTALL_HOOK(logger, BeatmapDataLoaderVersion4_BeatmapDataLoader_GetBeatmapDataFromSaveData) // TODO: implement
+				return data.info.id == "CustomJSONData";
+			}) == loaded.end()) {
+		Hooking::InstallHook<Hook_BeatmapData_AddBeatmapObjectData>(logger);
+		Hooking::InstallHook<Hook_BeatmapDataLoaderVersion2_6_0AndEarlier_BeatmapDataLoader_GetBeatmapDataFromSaveData>(logger);
+		Hooking::InstallHook<Hook_BeatmapDataLoaderVersion3_BeatmapDataLoader_GetBeatmapDataFromSaveData>(logger);
+		// Hooking::InstallHook<Hook_BeatmapDataLoaderVersion4_BeatmapDataLoader_GetBeatmapDataFromSaveData>(logger); // TODO: implement
 	}
 
-	INSTALL_HOOK(logger, BeatmapObjectsInTimeRowProcessor_HandleCurrentTimeSliceAllNotesAndSlidersDidFinishTimeSlice)
-	INSTALL_HOOK(logger, BeatmapObjectSpawnMovementData_GetNoteOffset)
-	INSTALL_HOOK(logger, StaticBeatmapObjectSpawnMovementData_Get2DNoteOffset)
-	INSTALL_HOOK(logger, BeatmapObjectSpawnMovementData_GetObstacleOffset)
-	INSTALL_HOOK(logger, BeatmapObjectSpawnMovementData_HighestJumpPosYForLineLayer)
-	// [HarmonyPatch(typeof(ColorNoteVisuals), nameof(ColorNoteVisuals.HandleNoteControllerDidInit))]
-	INSTALL_HOOK(logger, NoteBasicCutInfoHelper_GetBasicCutInfo)
-	INSTALL_HOOK(logger, NoteCutDirectionExtensions_Rotation)
-	INSTALL_HOOK(logger, NoteCutDirectionExtensions_Direction)
-	INSTALL_HOOK(logger, NoteCutDirectionExtensions_RotationAngle)
-	INSTALL_HOOK(logger, NoteCutDirectionExtensions_Mirrored)
-	INSTALL_HOOK(logger, NoteData_Mirror)
-	INSTALL_HOOK(logger, ObstacleController_Init)
-	INSTALL_HOOK(logger, ObstacleData_Mirror)
-	INSTALL_HOOK(logger, SliderData_Mirror)
-	INSTALL_HOOK(logger, SliderMeshController_CutDirectionToControlPointPosition)
-	INSTALL_HOOK(logger, StaticBeatmapObjectSpawnMovementData_LineYPosForLineLayer)
+	Hooking::InstallHook<Hook_BeatmapObjectsInTimeRowProcessor_HandleCurrentTimeSliceAllNotesAndSlidersDidFinishTimeSlice>(logger);
+	Hooking::InstallHook<Hook_BeatmapObjectSpawnMovementData_GetNoteOffset>(logger);
+	Hooking::InstallHook<Hook_StaticBeatmapObjectSpawnMovementData_Get2DNoteOffset>(logger);
+	Hooking::InstallHook<Hook_BeatmapObjectSpawnMovementData_GetObstacleOffset>(logger);
+	Hooking::InstallHook<Hook_BeatmapObjectSpawnMovementData_HighestJumpPosYForLineLayer>(logger);
+	Hooking::InstallHook<Hook_ColorNoteVisuals_HandleNoteControllerDidInit>(logger);
+	Hooking::InstallHook<Hook_NoteBasicCutInfoHelper_GetBasicCutInfo>(logger);
+	Hooking::InstallHook<Hook_NoteCutDirectionExtensions_Rotation>(logger);
+	Hooking::InstallHook<Hook_NoteCutDirectionExtensions_Mirrored>(logger);
+	Hooking::InstallHook<Hook_NoteData_Mirror>(logger);
+	Hooking::InstallHook<Hook_BeatmapObjectSpawnMovementData_GetObstacleSpawnData>(logger);
+	Hooking::InstallHook<Hook_ObstacleData_Mirror>(logger);
+	Hooking::InstallHook<Hook_SliderData_Mirror>(logger);
+	if constexpr(UseOrigHooks) {
+		Hooking::InstallOrigHook<Hook_NoteCutDirectionExtensions_Direction>(logger);
+		Hooking::InstallOrigHook<Hook_NoteCutDirectionExtensions_RotationAngle>(logger);
+		Hooking::InstallOrigHook<Hook_SliderMeshController_CutDirectionToControlPointPosition>(logger);
+		Hooking::InstallOrigHook<Hook_StaticBeatmapObjectSpawnMovementData_LineYPosForLineLayer>(logger);
+	} else {
+		Hooking::InstallHook<Hook_NoteCutDirectionExtensions_Direction>(logger);
+		Hooking::InstallHook<Hook_NoteCutDirectionExtensions_RotationAngle>(logger);
+		Hooking::InstallHook<Hook_SliderMeshController_CutDirectionToControlPointPosition>(logger);
+		Hooking::InstallHook<Hook_StaticBeatmapObjectSpawnMovementData_LineYPosForLineLayer>(logger);
+	}
 
-	logger.info("Installed ME Hooks successfully!");
+	logger.info("Installed ME hooks successfully!");
 	for(const std::string_view name : requirementNames)
 		SongCore::API::Capabilities::RegisterCapability(name);
 }
@@ -538,7 +660,8 @@ extern "C" [[gnu::visibility("default")]] void late_load() {
 #include <GlobalNamespace/zzzz__BeatmapData_impl.hpp>
 #include <GlobalNamespace/zzzz__BpmTimeProcessor_impl.hpp>
 #include <GlobalNamespace/zzzz__IJumpOffsetYProvider_impl.hpp>
-#include <GlobalNamespace/zzzz__SpawnRotationBeatmapEventData_impl.hpp>
+#include <GlobalNamespace/zzzz__NoteControllerBase_impl.hpp>
+#include <GlobalNamespace/zzzz__RotationTimeProcessor_impl.hpp>
 #include <System/Collections/Generic/zzzz__IReadOnlyCollection_1_impl.hpp>
 #include <System/Collections/Generic/zzzz__IReadOnlyList_1_impl.hpp>
 #include <System/Collections/Generic/zzzz__LinkedListNode_1_impl.hpp>

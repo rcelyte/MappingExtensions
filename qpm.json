@@ -4,37 +4,39 @@
 	"info": {
 		"name": "MappingExtensions",
 		"id": "MappingExtensions",
-		"version": "0.24.1",
+		"version": "0.25.0",
 		"url": "https://github.com/rcelyte/MappingExtensions",
-		"additionalData": {}
+		"additionalData": {
+			"cmake": false
+		}
 	},
 	"dependencies": [
 		{
 			"id": "beatsaber-hook",
-			"versionRange": "^5.1.9",
+			"versionRange": "^6.4.2",
 			"additionalData": {}
 		}, {
 			"id": "bs-cordl",
-			"versionRange": "^3700.0.0",
+			"versionRange": "^4004.0.0",
 			"additionalData": {}
 		}, {
-			"id": "paper",
-			"versionRange": "^3.6.1",
+			"id": "paper2_scotland2",
+			"versionRange": "^4.6.4",
 			"additionalData": {}
 		}, {
 			"id": "scotland2",
-			"versionRange": "^0.1.4",
+			"versionRange": "^0.1.6",
 			"additionalData": {
 				"includeQmod": false,
 				"private": true
 			}
 		}, {
 			"id": "sombrero",
-			"versionRange": "^0.1.37",
+			"versionRange": "^0.1.43",
 			"additionalData": {}
 		}, {
 			"id": "songcore",
-			"versionRange": "^1.1.12",
+			"versionRange": "^1.1.20",
 			"additionalData": {}
 		}
 	],
