@@ -4,7 +4,7 @@
 	"info": {
 		"name": "MappingExtensions",
 		"id": "MappingExtensions",
-		"version": "0.25.1",
+		"version": "0.25.2",
 		"url": "https://github.com/rcelyte/MappingExtensions",
 		"additionalData": {
 			"cmake": false
@@ -17,7 +17,7 @@
 			"additionalData": {}
 		}, {
 			"id": "bs-cordl",
-			"versionRange": "^4006.0.0",
+			"versionRange": "^4007.0.0",
 			"additionalData": {}
 		}, {
 			"id": "paper2_scotland2",
@@ -36,7 +36,7 @@
 			"additionalData": {}
 		}, {
 			"id": "songcore",
-			"versionRange": "^1.1.22",
+			"versionRange": "^1.1.23",
 			"additionalData": {}
 		}
 	],
