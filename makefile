@@ -57,7 +57,7 @@ extern/includes/bs-cordl/include/version.txt extern/includes/beatsaber-hook/shar
 		\"name\": \"Mapping Extensions\",\n\
 		\"id\": \"MappingExtensions\",\n\
 		\"author\": \"StackDoubleFlow, rxzz0, & rcelyte\",\n\
-		\"version\": \"0.25.0\",\n\
+		\"version\": \"0.25.1\",\n\
 		\"packageId\": \"com.beatgames.beatsaber\",\n\
 		\"packageVersion\": \"%s\",\n\
 		\"description\": \"This adds a host of new things you can do with your maps as a mapper, and allows you to play said maps as a player. An update of the port of the PC original mod by Kyle 1413. Previously maintained by zoller27osu.\",\n\
@@ -72,13 +72,13 @@ extern/includes/bs-cordl/include/version.txt extern/includes/beatsaber-hook/shar
 				\"id\": \"paper2_scotland2\",\n\
 				\"downloadIfMissing\": \"https://github.com/Fernthedev/paperlog/releases/download/v4.6.4/paper2_scotland2.qmod\"\n\
 			}, {\n\
-				\"version\": \"^1.1.20\",\n\
+				\"version\": \"^1.1.22\",\n\
 				\"id\": \"songcore\",\n\
-				\"downloadIfMissing\": \"https://github.com/raineio/Quest-SongCore/releases/download/v1.1.20/SongCore.qmod\"\n\
+				\"downloadIfMissing\": \"https://github.com/raineio/Quest-SongCore/releases/download/v1.1.22/SongCore.qmod\"\n\
 			}, {\n\
-				\"version\": \"^0.23.0\",\n\
+				\"version\": \"^0.24.2\",\n\
 				\"id\": \"custom-json-data\",\n\
-				\"downloadIfMissing\": \"https://github.com/StackDoubleFlow/CustomJSONData/releases/download/v0.23.0/custom-json-data.qmod\",\n\
+				\"downloadIfMissing\": \"https://github.com/StackDoubleFlow/CustomJSONData/releases/download/v0.24.2/custom-json-data.qmod\",\n\
 				\"required\": false\n\
 			}, {\n\
 				\"version\": \"^1.5.4\",\n\
