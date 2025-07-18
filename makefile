@@ -61,7 +61,7 @@ extern/includes/bs-cordl/include/version.txt extern/includes/beatsaber-hook/shar
 		\"packageId\": \"com.beatgames.beatsaber\",\n\
 		\"packageVersion\": \"%s\",\n\
 		\"description\": \"This adds a host of new things you can do with your maps as a mapper, and allows you to play said maps as a player. An update of the port of the PC original mod by Kyle 1413. Previously maintained by zoller27osu.\",\n\
-		\"coverImage\": \"cover.png\",\n\
+		\"coverImage\": \"cover.jpg\",\n\
 		\"dependencies\": [\n\
 			{\n\
 				\"version\": \"^6.4.2\",\n\
@@ -90,9 +90,9 @@ extern/includes/bs-cordl/include/version.txt extern/includes/beatsaber-hook/shar
 		\"lateModFiles\": [\"libmappingextensions.so\"]\n\
 	}" "$$(cat $<)" > .obj/mod.json
 
-MappingExtensions.qmod: libmappingextensions.so .obj/mod.json
+MappingExtensions.qmod: cover.jpg libmappingextensions.so .obj/mod.json
 	@echo "[zip $@]"
-	zip -j "$@" cover.png libmappingextensions.so .obj/mod.json
+	zip -j "$@" $^
 
 extern: qpm.json
 	@echo "[qpm restore]"
