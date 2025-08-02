@@ -606,8 +606,8 @@ extern "C" void setup(CModInfo*);
 extern "C" [[gnu::visibility("default")]] void setup(CModInfo *const modInfo) {
 	*modInfo = {
 		.id = "MappingExtensions",
-		.version = "0.25.2",
-		.version_long = 17,
+		.version = "0.25.3",
+		.version_long = 18,
 	};
 	logger.info("Leaving setup!");
 }
