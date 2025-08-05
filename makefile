@@ -75,16 +75,6 @@ extern/includes/bs-cordl/include/version.txt extern/includes/beatsaber-hook/shar
 				\"version\": \"^1.1.24\",\n\
 				\"id\": \"songcore\",\n\
 				\"downloadIfMissing\": \"https://github.com/raineio/Quest-SongCore/releases/download/v1.1.24/SongCore.qmod\"\n\
-			}, {\n\
-				\"version\": \"^0.24.3\",\n\
-				\"id\": \"custom-json-data\",\n\
-				\"downloadIfMissing\": \"https://github.com/StackDoubleFlow/CustomJSONData/releases/download/v0.24.3/custom-json-data.qmod\",\n\
-				\"required\": false\n\
-			}, {\n\
-				\"version\": \"^1.5.4\",\n\
-				\"id\": \"NoodleExtensions\",\n\
-				\"downloadIfMissing\": \"https://github.com/StackDoubleFlow/NoodleExtensions/releases/download/v1.5.4/NoodleExtensions.qmod\",\n\
-				\"required\": false\n\
 			}\n\
 		],\n\
 		\"lateModFiles\": [\"libmappingextensions.so\"]\n\
