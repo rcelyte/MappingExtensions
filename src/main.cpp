@@ -405,7 +405,7 @@ MAKE_HOOK_MATCH(NoteCutDirectionExtensions_Rotation, &GlobalNamespace::NoteCutDi
 
 MAKE_HOOK_MATCH(NoteCutDirectionExtensions_Direction,
 		&GlobalNamespace::NoteCutDirectionExtensions::Direction, UnityEngine::Vector2, const GlobalNamespace::NoteCutDirection cutDirection) {
-	UnityEngine::Vector2 result = {};
+	UnityEngine::Vector2 result(0, 0);
 	if constexpr(UseOrigHooks) {
 		switch(cutDirection) {
 			case GlobalNamespace::NoteCutDirection::Left: result = UnityEngine::Vector2(-1, 0); break;
@@ -549,7 +549,7 @@ MAKE_HOOK_MATCH(SliderData_Mirror, &GlobalNamespace::SliderData::Mirror, void, G
 }
 
 MAKE_HOOK_MATCH(SliderMeshController_CutDirectionToControlPointPosition, &GlobalNamespace::SliderMeshController::CutDirectionToControlPointPosition, UnityEngine::Vector3, GlobalNamespace::NoteCutDirection noteCutDirection) {
-	UnityEngine::Vector3 result = {};
+	UnityEngine::Vector3 result(0, 0, 0);
 	if constexpr(UseOrigHooks) {
 		switch(noteCutDirection) {
 			case GlobalNamespace::NoteCutDirection::Up: result = UnityEngine::Vector3(0, 1, -1e-05f); break;
