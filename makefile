@@ -4,12 +4,14 @@ MAKEFLAGS += -j
 
 sinclude makefile.user
 
+VERSION := $(shell jq -r .info.version qpm.json)
+
 CXX := $(NDK)/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ --target=aarch64-linux-android26
 CXXFLAGS := -std=c++20 -fPIC -ffunction-sections -fdata-sections -fvisibility=hidden -fdeclspec \
 	-Weverything -Wno-c++98-compat -Wno-pre-c++20-compat-pedantic -Wno-switch-enum -Werror -pedantic-errors \
 	-isystem extern/includes/libil2cpp/il2cpp/libil2cpp -isystem extern/includes/bs-cordl/include -isystem extern/includes/fmt/fmt/include \
 	-isystem extern/includes -isystem extern/includes/libil2cpp/il2cpp/external/baselib/Include \
-	-isystem extern/includes/libil2cpp/il2cpp/external/baselib/Platforms/Android/Include -DUNITY_2021 -DHAS_CODEGEN -DFMT_HEADER_ONLY
+	-isystem extern/includes/libil2cpp/il2cpp/external/baselib/Platforms/Android/Include -DUNITY_2021 -DHAS_CODEGEN -DFMT_HEADER_ONLY -DVERSION='"$(VERSION)"'
 LDFLAGS = -static-libstdc++ -shared -Wl,--no-undefined,--gc-sections,--fatal-warnings \
 	-Lextern/libs -l:$(notdir $(wildcard extern/libs/libbeatsaber-hook*.so)) -lsongcore -lpaper2_scotland2 -lsl2 -llog
 ifdef BUILD_DEBUG
@@ -36,7 +38,7 @@ libmappingextensions.so: $(OBJS) | ndk
 	$(CXX) $(LDFLAGS) $(OBJS) -o "$@"
 
 $(OBJDIR)/.obj/%.cpp.o: CXXFLAGS += -w -isystem extern/includes/beatsaber-hook/shared/inline-hook
-$(OBJDIR)/%.cpp.o: %.cpp extern makefile | ndk
+$(OBJDIR)/%.cpp.o: %.cpp extern qpm.json makefile | ndk
 	@echo "[cxx $(notdir $@)]"
 	@mkdir -p "$(@D)"
 	$(CXX) $(CXXFLAGS) -c "$<" -o "$@" -MMD -MP
@@ -47,7 +49,7 @@ extern/includes/bs-cordl/include/version.txt extern/includes/beatsaber-hook/shar
 	@mkdir -p "$(@D)"
 	sed 's/__attribute__((visibility("default")))//' $< > $@
 
-.obj/mod.json: extern/includes/bs-cordl/include/version.txt makefile
+.obj/mod.json: extern/includes/bs-cordl/include/version.txt qpm.json makefile
 	@echo "[printf $(notdir $@)]"
 	@mkdir -p "$(@D)"
 	printf "{\n\
@@ -57,7 +59,7 @@ extern/includes/bs-cordl/include/version.txt extern/includes/beatsaber-hook/shar
 		\"name\": \"Mapping Extensions\",\n\
 		\"id\": \"MappingExtensions\",\n\
 		\"author\": \"StackDoubleFlow, rxzz0, & rcelyte\",\n\
-		\"version\": \"0.25.3\",\n\
+		\"version\": \"%s\",\n\
 		\"packageId\": \"com.beatgames.beatsaber\",\n\
 		\"packageVersion\": \"%s\",\n\
 		\"description\": \"This adds a host of new things you can do with your maps as a mapper, and allows you to play said maps as a player. An update of the port of the PC original mod by Kyle 1413. Previously maintained by zoller27osu.\",\n\
@@ -78,7 +80,7 @@ extern/includes/bs-cordl/include/version.txt extern/includes/beatsaber-hook/shar
 			}\n\
 		],\n\
 		\"lateModFiles\": [\"libmappingextensions.so\"]\n\
-	}" "$$(cat $<)" > .obj/mod.json
+	}" "$(VERSION)" "$$(cat $<)" > .obj/mod.json
 
 MappingExtensions.qmod: cover.jpg libmappingextensions.so .obj/mod.json
 	@echo "[zip $@]"
